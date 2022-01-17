@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 
 /* Persistent FS state  (in reality, it should be maintained in secondary
  * memory; for simplicity, this project maintains it in primary memory) */
@@ -21,6 +22,9 @@ static char free_blocks[DATA_BLOCKS];
 
 static open_file_entry_t open_file_table[MAX_OPEN_FILES];
 static char free_open_file_entries[MAX_OPEN_FILES];
+static size_t number_of_open_files;
+static pthread_cond_t cond_open_files;
+
 
 static inline bool valid_inumber(int inumber) {
     return inumber >= 0 && inumber < INODE_TABLE_SIZE;
@@ -76,6 +80,11 @@ void state_init() {
     for (size_t i = 0; i < MAX_OPEN_FILES; i++) {
         free_open_file_entries[i] = FREE;
     }
+
+    if (pthread_cond_init(&cond_open_files, NULL) != 0) {
+        return -1;
+    }
+    number_of_open_files = 0;
 }
 
 void state_destroy() { /* nothing to do */
@@ -306,6 +315,8 @@ int add_to_open_file_table(int inumber, size_t offset) {
             free_open_file_entries[i] = TAKEN;
             open_file_table[i].of_inumber = inumber;
             open_file_table[i].of_offset = offset;
+            number_of_open_files++;
+            pthread_cond_signal(&cond_open_files);
             return i;
         }
     }
@@ -323,6 +334,8 @@ int remove_from_open_file_table(int fhandle) {
         return -1;
     }
     free_open_file_entries[fhandle] = FREE;
+    number_of_open_files++;
+    pthread_cond_signal(&cond_open_files);
     return 0;
 }
 

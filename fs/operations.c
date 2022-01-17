@@ -27,6 +27,9 @@ int tfs_destroy() {
     if (pthread_mutex_destroy(&single_global_lock) != 0) {
         return -1;
     }
+    if (pthread_cond_destroy(&cond_open_files) != 0) {
+        return -1;
+    }
     return 0;
 }
 
@@ -116,6 +119,11 @@ int tfs_open(char const *name, int flags) {
     if (pthread_mutex_lock(&single_global_lock) != 0)
         return -1;
     int ret = _tfs_open_unsynchronized(name, flags);
+
+    if (ret != -1) {
+        number_of_open_files++;
+        pthread_cond_signal(&cond_open_files);
+    }
     if (pthread_mutex_unlock(&single_global_lock) != 0)
         return -1;
 
@@ -126,6 +134,11 @@ int tfs_close(int fhandle) {
     if (pthread_mutex_lock(&single_global_lock) != 0)
         return -1;
     int r = remove_from_open_file_table(fhandle);
+
+    if (ret != -1) {
+        number_of_open_files--;
+        pthread_cond_signal
+    }
     if (pthread_mutex_unlock(&single_global_lock) != 0)
         return -1;
 
