@@ -6,13 +6,32 @@
 #include <string.h>
 
 static pthread_mutex_t single_global_lock;
+static pthread_mutex_t system_lock;
+static pthread_mutex_t destruction_lock;
+static size_t number_of_open_files;
+static pthread_cond_t cond_open_files;
+static pthread_cond_t cond_initialized_system;
+static int tfs_state;
 
 int tfs_init() {
     state_init();
+    tfs_state = INITIALIZED;
 
     if (pthread_mutex_init(&single_global_lock, 0) != 0)
         return -1;
-
+    
+    if (pthread_cond_init(&cond_open_files, 0) != 0)
+        return -1;
+    if (pthread_mutex_init(&system_lock, 0) != 0)
+        return -1;
+    if (pthread_cond_init(&cond_initialized_system, 0) != 0)
+        return -1;
+    if (pthread_mutex_init(&destruction_lock, 0) != 0) 
+        return -1;
+    pthread_mutex_lock(&system_lock);
+    number_of_open_files = 0;
+    pthread_mutex_unlock(&system_lock);
+    pthread_cond_signal(&cond_initialized_system);
     /* create root inode */
     int root = inode_create(T_DIRECTORY);
     if (root != ROOT_DIR_INUM) {
@@ -24,12 +43,17 @@ int tfs_init() {
 
 int tfs_destroy() {
     state_destroy();
+    tfs_state = DESTROYED;
     if (pthread_mutex_destroy(&single_global_lock) != 0) {
         return -1;
     }
     if (pthread_cond_destroy(&cond_open_files) != 0) {
         return -1;
     }
+    if (pthread_mutex_destroy(&system_lock) != 0) {
+        return -1;
+    }
+
     return 0;
 }
 
@@ -38,6 +62,30 @@ static bool valid_pathname(char const *name) {
 }
 
 int tfs_destroy_after_all_closed() {
+
+    /* Wait for all files to be closed */
+    while (!(number_of_open_files == 0)) {
+        pthread_cond_wait(&cond_open_files, &system_lock); //Será que é preciso o lock ser diferente?
+    }
+
+    /* Lock system and destroy it */
+    pthread_mutex_lock(&single_global_lock);        //Verificar os erros
+    state_destroy();
+    pthread_mutex_lock(&destruction_lock);
+    tfs_state = DESTROYED;
+    pthread_mutex_unlock(&destruction_lock);
+    pthread_mutex_unlock(&single_global_lock);
+
+    //Abstrair com o tfs_destroy normal
+
+    if (pthread_cond_destroy(&cond_open_files) != 0) {
+        return -1;
+    }
+    if (pthread_mutex_destroy(&single_global_lock) != 0) {
+        return -1;
+    }
+
+
     /* TO DO: implement this */
     return 0;
 }
@@ -116,13 +164,27 @@ static int _tfs_open_unsynchronized(char const *name, int flags) {
 }
 
 int tfs_open(char const *name, int flags) {
+    /*int failed = 0;
+    while (tfs_state != INITIALIZED) {
+        failed = 1;
+        pthread_cond_wait(&cond_initialized_system, &destruction_lock);
+    }*/
+
+    if (tfs_state != INITIALIZED) {
+        /* Tried to open file after system destruction */
+        return -1;
+    }
+
     if (pthread_mutex_lock(&single_global_lock) != 0)
         return -1;
+    
     int ret = _tfs_open_unsynchronized(name, flags);
 
     if (ret != -1) {
+        pthread_mutex_lock(&system_lock);
         number_of_open_files++;
-        pthread_cond_signal(&cond_open_files);
+        pthread_mutex_unlock(&system_lock);
+        // // pthread_cond_signal(&cond_open_files);
     }
     if (pthread_mutex_unlock(&single_global_lock) != 0)
         return -1;
@@ -131,14 +193,17 @@ int tfs_open(char const *name, int flags) {
 }
 
 int tfs_close(int fhandle) {
+
     if (pthread_mutex_lock(&single_global_lock) != 0)
         return -1;
     int r = remove_from_open_file_table(fhandle);
 
-    if (ret != -1) {
-        number_of_open_files--;
-        pthread_cond_signal
+    if (r == -1) {
+        return -1;
     }
+    number_of_open_files--;
+    pthread_cond_signal(&cond_open_files);
+
     if (pthread_mutex_unlock(&single_global_lock) != 0)
         return -1;
 
