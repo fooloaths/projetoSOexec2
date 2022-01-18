@@ -6,6 +6,9 @@
 #include "state.h"
 #include <sys/types.h>
 
+#define INITIALIZED 1
+#define DESTROYED -1
+
 /*
  * Initializes tecnicofs
  * Returns 0 if successful, -1 otherwise.
