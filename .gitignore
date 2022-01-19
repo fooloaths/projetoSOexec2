@@ -50,3 +50,6 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+tests/client_server_simple_test
+tests/lib_destroy_after_all_closed_test
+fs/tfs_server
