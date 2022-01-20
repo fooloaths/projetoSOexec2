@@ -1,6 +1,50 @@
 #include "tecnicofs_client_api.h"
 
+#define REQUEST_MOUNT 1
+
+
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
+    int fserv, fcli;
+    size_t path_size, size_written = 0;
+
+    if ((fserv = open(server_pipe_path, O_WRONLY)) < 0) { //Talvez read write?
+        /* Server named pipe not created */
+        return -1;
+    }
+
+    unlink(client_pipe_path); /* Não sei se isto é preciso. Perguntar ao prof/piazza */
+
+    if (mkfifo(client_pipe_path) < 0) {
+        /* Failed to create client's named pipe */
+        return -1;
+    }
+
+    if ((fcli = open(client_pipe_path, O_WRONLY)) < 0) {
+        /* Failed to open client's pipe */
+    }
+
+    /*
+     * Falta ver acabar de implementar o session_id
+     *
+     *
+     * /
+
+    /* Write to the server's named pipe the path to the client side of the
+     * pipe */
+    
+    path_size = strlen(client_pipe_path) + 1; /* Take into account \0 */
+    size_written = write(fserv, client_pipe_path, path_size);
+
+    if (size_written <= 0) {
+        /* Error occured or nothing was written */
+        return -1;
+    }
+
+    /* Read from client's named pipe the assigned session id */
+        //read(fcli, buff, um tamanho)
+        //trata_da_msg();
+
+    
     /* TODO: Implement this */
     return -1;
 }
