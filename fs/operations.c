@@ -64,6 +64,9 @@ static bool valid_pathname(char const *name) {
 int tfs_destroy_after_all_closed() {
 
     /* Wait for all files to be closed */
+    pthread_mutex_lock(&destruction_lock);
+    tfs_state = DESTROYED;
+    pthread_mutex_unlock(&destruction_lock); //Talvez mudar este lock mais para baixo do loop?
     while (!(number_of_open_files == 0)) {
         pthread_cond_wait(&cond_open_files, &system_lock); //Será que é preciso o lock ser diferente?
     }
@@ -71,9 +74,6 @@ int tfs_destroy_after_all_closed() {
     /* Lock system and destroy it */
     pthread_mutex_lock(&single_global_lock);        //Verificar os erros
     state_destroy();
-    pthread_mutex_lock(&destruction_lock);
-    tfs_state = DESTROYED;
-    pthread_mutex_unlock(&destruction_lock);
     pthread_mutex_unlock(&single_global_lock);
 
     //Abstrair com o tfs_destroy normal
@@ -85,6 +85,8 @@ int tfs_destroy_after_all_closed() {
         return -1;
     }
 
+
+    /* TO DO: implement this */
     return 0;
 }
 
@@ -162,13 +164,14 @@ static int _tfs_open_unsynchronized(char const *name, int flags) {
 }
 
 int tfs_open(char const *name, int flags) {
-    /*int failed = 0;
+    int failed = 0;
     while (tfs_state != INITIALIZED) {
         failed = 1;
         pthread_cond_wait(&cond_initialized_system, &destruction_lock);
-    }*/
+    }
 
-    if (tfs_state != INITIALIZED) {
+    if (failed) {
+        printf("aaa\n");
         /* Tried to open file after system destruction */
         return -1;
     }
@@ -182,7 +185,7 @@ int tfs_open(char const *name, int flags) {
         pthread_mutex_lock(&system_lock);
         number_of_open_files++;
         pthread_mutex_unlock(&system_lock);
-        // // pthread_cond_signal(&cond_open_files);
+        pthread_cond_signal(&cond_open_files);
     }
     if (pthread_mutex_unlock(&single_global_lock) != 0)
         return -1;
