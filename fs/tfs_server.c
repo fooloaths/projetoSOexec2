@@ -28,14 +28,14 @@ void server_init() {
 
 int get_free_session_id() {
 
-    printf("Servidor get_free_session_id: Vamos começar o loop\n");
+    // printf("Servidor get_free_session_id: Vamos começar o loop\n");
     for (int i = 0; i < S; i++) {
-        printf("Servidor get_free_session_id: o índice é %d e o id está ", i);
+        // printf("Servidor get_free_session_id: o índice é %d e o id está ", i);
         if (session_ids[i] == FREE) {
-            printf("FREE\n");
+            // printf("FREE\n");
             return i;
         }
-        printf("TAKEN\n");
+        // printf("TAKEN\n");
     }
     return -1;
 }
@@ -49,6 +49,7 @@ int tfs_mount(char *path) {
     printf("Servidor tfs_mount: Vamos começar a operação\n");
 
     printf("Servidor tfs_mount: Vamos tentar abrir o pipe do client em write mode\n");
+    printf("Servidor tfs_mount: O path do pipe do cliente é %s\n", path);
     if ((fcli = fopen(path, "w")) == NULL) {
         /* Failed to open client's side of the pipe */
         printf("Servidor tfs_mount: Falhou ao tentar abrir o pipe do cliente\n");
@@ -85,14 +86,16 @@ int tfs_mount(char *path) {
     return id;
 }
 
-int treat_request(char *buff) {
-    int op_code = buff[0] - '0';
+int treat_request(char *buff, FILE *fserv) {
+    int op_code = buff[0];
     char pipe_path[PIPE_PATH_SIZE];
 
     printf("Servidor treat_request: Vamos começar a operação\n");
     printf("Servidor treat_request: o opcode é %d\n", op_code);
     if (op_code == TFS_OP_CODE_MOUNT) {
         /* Skip op code */
+        fread(buff, sizeof(char), 40, fserv);
+        printf("\n\nO buffer na sua inteiridade é %s\n\n", buff);
         printf("Servidor treat_request: Queremos fazer mount, por isso vamos copiar o client pipe path do buffer\n");
         strcpy(pipe_path, buff+1);
         printf("Servidor treat_request: Vamos tentar fazer tfs_mount\n");
@@ -128,7 +131,7 @@ int treat_request(char *buff) {
 int main(int argc, char **argv) {
     FILE *fserv;
     size_t r_buffer;
-    char buff[50] = {'\0'}; //Valor temporário
+    char buff[41] = {'\0'}; //Valor temporário
     // // int fcli[10];
 
     if (argc < 2) {
@@ -148,30 +151,41 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    /* Open server's named pipe */
-    if ((fserv = fopen(pipename, "r")) == NULL) {
-        printf("cccc\n");
-        return -1;
-    }
+    // /* Open server's named pipe */
+    // if ((fserv = fopen(pipename, "r")) == NULL) {
+    //     printf("cccc\n");
+    //     return -1;
+    // }
 
 
     /* TO DO */
     /* Main loop */
     while (1) {
+        /* Open server's named pipe */
+        if ((fserv = fopen(pipename, "r")) == NULL) {
+            printf("Servidor: Falhou ao abrir o lado do servidor\n");
+            return -1;
+        }
+
         /* Read requests from pipe */
-        printf("l\n");
-        r_buffer = fread(buff, sizeof(int), 1 + 40, fserv); /* OP_CODE + id + missing flags */
+        // // // printf("l\n");
+        r_buffer = fread(buff, sizeof(int), 1, fserv); /* OP_CODE + id + missing flags */
         /*if (r_buffer == -1) {
             return -1;
         }        */
+        /*if (fclose(fserv) != 0) {
+            return -1;
+        }*/
+
         /*
          * TODO Falta ver condição que é para terminar o loop
          * */
 
-        if (treat_request(buff) == -1) {
-            printf("aaa\n");
+        if (treat_request(buff, fserv) == -1) {
+            printf("Servidor: Falhou ao tratar do pedido\n");
             return -1;
         }
+
     }
 
 
