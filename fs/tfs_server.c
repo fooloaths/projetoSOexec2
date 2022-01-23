@@ -73,7 +73,7 @@ int tfs_mount(char *path) {
     printf("Servidor tfs_mount: Escreveu %zu bytes\n", bytes_written);
     if (bytes_written != sizeof(int)) {
         printf("Servidor tfs_mount: Falhou ao escrever o id\n");
-        return -1;
+        return -1;  
     }
 
     printf("Servidor tfs_mount: Vamos fechar o pipe do cliente\n");
@@ -90,11 +90,13 @@ int tfs_mount(char *path) {
 
 int treat_request(char *buff, FILE *fserv) {
     int op_code = buff[0];
-    char pipe_path[PIPE_PATH_SIZE];
     char path[PIPE_PATH_SIZE + 1];
 
     printf("Servidor treat_request: Vamos começar a operação\n");
     printf("Servidor treat_request: o opcode é %d\n", op_code);
+    if (op_code == 0) {
+        return 0;
+    }
     if (op_code == TFS_OP_CODE_MOUNT) {
         /* Skip op code */
         fread(path, 1, sizeof(path), fserv);

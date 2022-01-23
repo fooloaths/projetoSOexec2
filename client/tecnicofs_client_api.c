@@ -59,7 +59,7 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     // // size_written = write(fserv, client_pipe_path, path_size);
     strncpy(buff, client_pipe_path, path_size);
     printf("Cliente tfs mount: Vamos escrever para o pipe do servidor o client pipe path\n");
-    size_written = fwrite(buff, sizeof(int), 40, fserv);
+    size_written = fwrite(buff, sizeof(char), 40, fserv);
     printf("O buffer é %s\n", buff);
     // size_written = fwrite(client_pipe_path, sizeof(int), 40, fserv); //Falta meter '\0s até encher os 40 slots
     printf("\nESCREVERAM-SE %ld bytes\n\n", size_written);
@@ -111,9 +111,13 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
 
     /* Read from client's named pipe the assigned session id */
     printf("Cliente tfs mount: Vamos tentar ler a resposta do servidor\n");
-    fread(&id, sizeof(int), 1, fcli);
+    size_t size_read = fread(&id, 1, sizeof(int), fcli);
+    if (size_read != sizeof(int)) {
+        /* Error occured */
+        return -1;
+    }
     if (id == -1) {
-        /* Failed to mount to tfs server */
+       /* Failed to mount to tfs server */
         return -1;
     }
     
