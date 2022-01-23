@@ -90,17 +90,19 @@ int tfs_mount(char *path) {
 int treat_request(char *buff, FILE *fserv) {
     int op_code = buff[0];
     char pipe_path[PIPE_PATH_SIZE];
+    char path[PIPE_PATH_SIZE + 1];
 
     printf("Servidor treat_request: Vamos começar a operação\n");
     printf("Servidor treat_request: o opcode é %d\n", op_code);
     if (op_code == TFS_OP_CODE_MOUNT) {
         /* Skip op code */
-        fread(buff, sizeof(char), 40, fserv);
-        printf("\n\nO buffer na sua inteiridade é %s\n\n", buff);
+        fread(path, 1, sizeof(path), fserv);
+        printf("buff: %s\n", path);
+        printf("O buffer na sua inteiridade é %s\n", path);
         printf("Servidor treat_request: Queremos fazer mount, por isso vamos copiar o client pipe path do buffer\n");
-        strcpy(pipe_path, buff+1);
+        printf("pipe path é %s\n", path);  
         printf("Servidor treat_request: Vamos tentar fazer tfs_mount\n");
-        if (tfs_mount(pipe_path) == -1) {
+        if (tfs_mount(path) == -1) {
             printf("Servidor treat_request: O pedido falhou\n");
             return -1;
         }
