@@ -62,14 +62,15 @@ int tfs_mount(char *path) {
     id = get_free_session_id();
     printf("Servidor tfs_mount: O id é %d\n", id);
     if (id == -1) {
-        bytes_written = fwrite(&id, sizeof(int), 1, fcli);
+        bytes_written = fwrite(&id, 1, sizeof(int), fcli);
 
         return -1;
     }
 
     /* Write to client pipe */
     printf("Servidor tfs_mount: Vamos escrever o id no pipe do cliente\n");
-    bytes_written = fwrite(&id, sizeof(int), 1, fcli);
+    bytes_written = fwrite(&id, 1, sizeof(int), fcli);
+    printf("Servidor tfs_mount: Escreveu %zu bytes\n", bytes_written);
     if (bytes_written != sizeof(int)) {
         printf("Servidor tfs_mount: Falhou ao escrever o id\n");
         return -1;
