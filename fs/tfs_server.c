@@ -51,6 +51,7 @@ int tfs_mount(char *path) {
     printf("Servidor tfs_mount: Vamos tentar abrir o pipe do client em write mode\n");
     printf("Servidor tfs_mount: O path do pipe do cliente é %s\n", path);
     if ((fcli = fopen(path, "w")) == NULL) {
+        perror("Erro: ");
         /* Failed to open client's side of the pipe */
         printf("Servidor tfs_mount: Falhou ao tentar abrir o pipe do cliente\n");
         return -1;
