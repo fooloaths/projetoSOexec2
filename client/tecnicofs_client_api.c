@@ -9,6 +9,7 @@
 
 
 //TODO Pensar nas operações se o cliente já tivesse mounted/unmounted?
+//TODO talvez função para concatenar argumentos e enviar o pedido?
 
 #define MOUNT_OP_CODE (char) 1
 #define PIPE_NAME_SIZE 40
@@ -114,6 +115,8 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
 
 int tfs_unmount() {
     /* TODO: Implement this */
+    //TODO Concatenar tudo para mandar ao servidor
+    //TODO usar uma função auxiliar para mandar a mensagem
     size_t size_written = 0;
     int operation_result;
 
@@ -162,7 +165,39 @@ int tfs_unmount() {
 int tfs_open(char const *name, int flags) {
     /* TODO: Implement this */
     printf("Cliente tfs_open: Início da operação\n");
-    return -1;
+    size_t size_written, size = 1 + 1 + FILE_NAME_SIZE + 1; /* OP code, id, name and flags */
+    char *message = (char *) malloc(sizeof(char) * (size + 1));
+    // char OP_CODE[2], id[2], flag[2];
+    int operation_result;
+
+    if (message == NULL) {
+        return -1;
+    }
+    // message[0] = '\0';
+    // OP_CODE[0] = TFS_OP_CODE_OPEN + '0'; OP_CODE[1] = '\0'; //TODO Este código está feio que doi
+    // id[0] = session_id + '0'; id[1] = '\0';                 //TODO Perguntar ao prof se há maneira mais bonita de fazer isto
+    // flag[0] = flags + '0'; flag[1] = '\0';
+
+    // strcat(message, OP_CODE);
+    // strcat(message, id);
+    message[0] = TFS_OP_CODE_OPEN + '0';
+    message[1] = session_id + '0';
+    message[2] = '\0';
+    strcat(message, name); //Ver se esta linha está a copiar os 40 bytes do nome e não só até ao '\0'
+    message[2 + FILE_NAME_SIZE + 1] = flags + '0'; //TODO será que isto preserva a representação binária da flag? (Perguntar ao prof)
+    // strcat(message, flag);
+
+    /* Send request */
+    size_written = fwrite(message, sizeof(char), size, fserv);
+    if (size_written < size) {
+        return -1;
+    }
+
+    /* Read answer */
+    fread(&operation_result, sizeof(int), 1, fcli);
+        //Falta o check for error da syscall/se leu o suficiente
+
+    return operation_result;
 }
 
 int tfs_close(int fhandle) {
