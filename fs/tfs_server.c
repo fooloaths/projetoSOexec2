@@ -1,201 +1,135 @@
-#include "operations.h"
-#include "common/common.h"
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include "tecnicofs_client_api.h"
 #include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <unistd.h> // Not sure se este é preciso
+#include <string.h>
+// // #include <unistd.h> // Not sure se este é preciso
 
-//TODO: Redifine in config.h
-#define S 10 /* confirmar isto com os profs. É suposto ser o nº de possíveis sessões ativas */
-#define FREE 1
-#define TAKEN 0
 
-struct session { /* Não sei se é isto que temos de fazer */
-    char const *pipe;
-    size_t session_id;
-};
+#define MOUNT_OP_CODE (char) 1
+#define PIPE_NAME_SIZE 40
 
-static int session_ids[S];
 
-void server_init() {
-    for (size_t i = 0; i < S; i++) {
-        session_ids[i] = FREE;
+// static int session_id = -1;
+// char const *pipe_path = NULL;
+
+int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
+    int operation_result;
+    FILE *fserv, *fcli; 
+    size_t path_size, size_written = 0;
+    char buff[PIPE_PATH_SIZE] = {'\0'};
+
+    unlink(client_pipe_path);
+
+    // printf("Cliente tfs mount: Vamos tentar fazer mkfifo do pipe do cliente\n");
+    if (mkfifo(client_pipe_path, 0640) < 0) {
+        /* Failed to create client's named pipe */
+        printf("Cliente tfs_mount: Falhou ao tentar criar o pipe do cliente\n");
+        return -1;
     }
+
+    // printf("Cliente tfs mount: Vamos tentar abrir o pipe do cliente\n");
+    if ((fcli = fopen(client_pipe_path, "r+")) == NULL) {
+        /* Failed to open client's pipe */
+        printf("Cliente tfs_mount: Falhou ao tentar abrir o pipe do cliente");
+        return -1;
+    }
+
+    // printf("Cliente tfs mount: Vamos começar a operação\n");
+    // printf("Cliente tfs mount: Vamos tentar abrir o pipe do servidor\n");
+    // printf("Cliente tfs_mount: Esse path é %s\n", server_pipe_path);
+    if ((fserv = fopen(server_pipe_path, "w")) == NULL) { //Talvez read write?
+        /* Server named pipe not created */
+        printf("Cliente tfs_mount: Falhou ao tentar abrir o pipe do servidor\n");
+        return -1;
+    }
+
+    /* Write to the server's named pipe the path to the client side of the
+     * pipe */
+    path_size = strlen(client_pipe_path) + 1; /* Take into account \0 */
+    int op_code = TFS_OP_CODE_MOUNT;
+    printf("Cliente tfs mount: vamos escrever para o pipe o opcode\n");
+    size_written = fwrite(&op_code, sizeof(int), 1, fserv);
+    if (size_written <= 0) {
+        /* Error occured */
+        return -1;
+    }
+
+    // // // size_written = write(fserv, client_pipe_path, path_size);
+    strncpy(buff, client_pipe_path, path_size);
+    // printf("Cliente tfs mount: Vamos escrever para o pipe do servidor o client pipe path\n");
+    size_written = fwrite(buff, sizeof(int), 40, fserv);
+    // printf("O buffer é %s\n", buff);
+    // size_written = fwrite(client_pipe_path, sizeof(int), 40, fserv); //Falta meter '\0s até encher os 40 slots
+    // printf("\nESCREVERAM-SE %ld bytes\n\n", size_written);
+    if (size_written <= 0) {
+        /* Error occured or nothing was written */
+        return -1;
+    }
+
+    // printf("Cliente tfs mount: Vamos fechar o pipe do servidor\n");
+    if (fclose(fserv) != 0) {
+        return -1;
+    }
+
+    // // // // printf("Cliente tfs mount: Vamos tentar fazer mkfifo do pipe do cliente\n");
+    // // // // if (mkfifo(client_pipe_path, 0777) < 0) {
+    // // // //     /* Failed to create client's named pipe */
+    // // // //     printf("Cliente tfs_mount: Falhou ao tentar criar o pipe do cliente\n");
+    // // // //     return -1;
+    // // // // }
+
+    // // // // printf("Cliente tfs mount: Vamos tentar abrir o pipe do cliente\n");
+    // // // // if ((fcli = fopen(client_pipe_path, "r+")) == NULL) {
+    // // // //     /* Failed to open client's pipe */
+    // // // //     printf("Cliente tfs_mount: Falhou ao tentar abrir o pipe do cliente");
+    // // // //     return -1;
+    // // // // }
+
+    /* Read from client's named pipe the assigned session id */
+    // printf("Cliente tfs mount: Vamos tentar ler a resposta do servidor\n");
+    fread(&operation_result, sizeof(int), 1, fcli);
+    printf("O operation result é %d\n", operation_result);
+    if (operation_result == -1) {
+        /* Failed to mount to tfs server */
+        return -1;
+    }
+
+
+    // printf("Cliente tfs mount: Operação concluída com sucesso.\n");
+
+    return 0;
 }
 
-int get_free_session_id() {
-
-    // printf("Servidor get_free_session_id: Vamos começar o loop\n");
-    for (int i = 0; i < S; i++) {
-        // printf("Servidor get_free_session_id: o índice é %d e o id está ", i);
-        if (session_ids[i] == FREE) {
-            // printf("FREE\n");
-            return i;
-        }
-        // printf("TAKEN\n");
-    }
+int tfs_unmount() {
+    /* TODO: Implement this */
     return -1;
 }
 
-
-int tfs_mount(char *path) {
-    int id;
-    size_t  bytes_written = 0;
-    FILE *fcli;
-
-    printf("Servidor tfs_mount: Vamos começar a operação\n");
-
-    printf("Servidor tfs_mount: Vamos tentar abrir o pipe do client em write mode\n");
-    printf("Servidor tfs_mount: O path do pipe do cliente é %s\n", path);
-    if ((fcli = fopen(path, "w")) == NULL) {
-        perror("Erro: ");
-        /* Failed to open client's side of the pipe */
-        printf("Servidor tfs_mount: Falhou ao tentar abrir o pipe do cliente\n");
-        return -1;
-    }
-    
-
-    printf("Servidor tfs_mount: Vamos tentar obter o primeiro session id livre\n");
-    id = get_free_session_id();
-    printf("Servidor tfs_mount: O id é %d\n", id);
-    if (id == -1) {
-        bytes_written = fwrite(&id, 1, sizeof(int), fcli);
-
-        return -1;
-    }
-
-    /* Write to client pipe */
-    printf("Servidor tfs_mount: Vamos escrever o id no pipe do cliente\n");
-    bytes_written = fwrite(&id, 1, sizeof(int), fcli);
-    printf("Servidor tfs_mount: Escreveu %zu bytes\n", bytes_written);
-    if (bytes_written != sizeof(int)) {
-        printf("Servidor tfs_mount: Falhou ao escrever o id\n");
-        return -1;  
-    }
-
-    printf("Servidor tfs_mount: Vamos fechar o pipe do cliente\n");
-    if (fclose(fcli) != 0) {
-        /* Failed to close file */
-        printf("Servidor tfs_mount: Falhou ao fechar o pipe\n");
-        return -1;
-    }
-
-    printf("Servidor tfs_mount: Operação terminada com exito\n");
-
-    return id;
+int tfs_open(char const *name, int flags) {
+    /* TODO: Implement this */
+    printf("Cliente tfs_open: Início da operação\n");
+    return -1;
 }
 
-int treat_request(char *buff, FILE *fserv) {
-    int op_code = buff[0];
-    char path[PIPE_PATH_SIZE + 1];
-
-    printf("Servidor treat_request: Vamos começar a operação\n");
-    printf("Servidor treat_request: o opcode é %d\n", op_code);
-    if (op_code == 0) {
-        return 0;
-    }
-    if (op_code == TFS_OP_CODE_MOUNT) {
-        /* Skip op code */
-        fread(path, 1, sizeof(path), fserv);
-        printf("buff: %s\n", path);
-        printf("O buffer na sua inteiridade é %s\n", path);
-        printf("Servidor treat_request: Queremos fazer mount, por isso vamos copiar o client pipe path do buffer\n");
-        printf("pipe path é %s\n", path);  
-        printf("Servidor treat_request: Vamos tentar fazer tfs_mount\n");
-        if (tfs_mount(path) == -1) {
-            printf("Servidor treat_request: O pedido falhou\n");
-            return -1;
-        }
-    }
-    else if (op_code == TFS_OP_CODE_UNMOUNT ) {
-    } 
-    else if (op_code == TFS_OP_CODE_OPEN) {        
-    }
-    else if (op_code == TFS_OP_CODE_CLOSE) {
-    }
-    else if (op_code == TFS_OP_CODE_WRITE) {
-    }
-    else if (op_code == TFS_OP_CODE_READ) {
-    }
-    else if (op_code == TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED) {
-    }
-    else {
-        //op code does not exist
-        return -1;
-    }
-
-    printf("Servidor treat_request: O pedido foi executado com exito\n");
-
-    return 0;
+int tfs_close(int fhandle) {
+    // // if (tfs_close(fhandle) == )
+    return -1;
 }
 
+ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
+    /* TODO: Implement this */
+    return -1;
+}
 
+ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
+    /* TODO: Implement this */
+    return -1;
+}
 
-int main(int argc, char **argv) {
-    FILE *fserv;
-    size_t r_buffer;
-    char buff[41] = {'\0'}; //Valor temporário
-    // // int fcli[10];
-
-    if (argc < 2) {
-        printf("Please specify the pathname of the server's pipe.\n");
-        return 1;
-    }
-
-    char *pipename = argv[1];
-    printf("Starting TecnicoFS server with pipe called %s\n", pipename);
-
-    server_init();
-    // // unlink(pipename); /* Não sei se isto é preciso. Perguntar ao prof/piazza */
-
-    /* Create server's named pipe */
-    if (mkfifo(pipename, 0777) < 0) {
-        printf("bbb\n");
-        return -1;
-    }
-
-    // /* Open server's named pipe */
-    // if ((fserv = fopen(pipename, "r")) == NULL) {
-    //     printf("cccc\n");
-    //     return -1;
-    // }
-
-
-    /* TO DO */
-    /* Main loop */
-    while (1) {
-        /* Open server's named pipe */
-        if ((fserv = fopen(pipename, "r")) == NULL) {
-            printf("Servidor: Falhou ao abrir o lado do servidor\n");
-            return -1;
-        }
-
-        /* Read requests from pipe */
-        // // // printf("l\n");
-        r_buffer = fread(buff, sizeof(int), 1, fserv); /* OP_CODE + id + missing flags */
-        /*if (r_buffer == -1) {
-            return -1;
-        }        */
-        /*if (fclose(fserv) != 0) {
-            return -1;
-        }*/
-
-        /*
-         * TODO Falta ver condição que é para terminar o loop
-         * */
-
-        if (treat_request(buff, fserv) == -1) {
-            printf("Servidor: Falhou ao tratar do pedido\n");
-            return -1;
-        }
-
-    }
-
-
-    // // unlink(pipename); /* Não sei se isto é preciso. Perguntar ao prof/piazza */
-
-    return 0;
+int tfs_shutdown_after_all_closed() {
+    /* TODO: Implement this */
+    return -1;
 }
