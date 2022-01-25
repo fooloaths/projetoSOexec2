@@ -8,16 +8,19 @@
 // // #include <unistd.h> // Not sure se este é preciso
 
 
+//TODO Pensar nas operações se o cliente já tivesse mounted/unmounted?
+
 #define MOUNT_OP_CODE (char) 1
 #define PIPE_NAME_SIZE 40
 
 
-// static int session_id = -1;
-// char const *pipe_path = NULL;
+static int session_id = -1;
+static char const *pipe_path = NULL;
+static FILE *fserv, *fcli;
 
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
-    int operation_result;
-    FILE *fserv, *fcli; 
+    int id;
+    // FILE *fserv, *fcli; 
     size_t path_size, size_written = 0;
     char buff[PIPE_PATH_SIZE] = {'\0'};
 
@@ -52,7 +55,8 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     int op_code = TFS_OP_CODE_MOUNT;
     printf("Cliente tfs mount: vamos escrever para o pipe o opcode\n");
     size_written = fwrite(&op_code, sizeof(int), 1, fserv);
-    if (size_written <= 0) {
+    // // // if (size_written <= 0) {
+    if ((size_written * sizeof(int)) < sizeof(int)) {
         /* Error occured */
         return -1;
     }
@@ -64,7 +68,8 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     // printf("O buffer é %s\n", buff);
     // size_written = fwrite(client_pipe_path, sizeof(int), 40, fserv); //Falta meter '\0s até encher os 40 slots
     // printf("\nESCREVERAM-SE %ld bytes\n\n", size_written);
-    if (size_written <= 0) {
+    // // // if (size_written <= 0) {
+    if ((size_written * sizeof(int)) < (40 * sizeof(int))) {
         /* Error occured or nothing was written */
         return -1;
     }
@@ -90,22 +95,68 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
 
     /* Read from client's named pipe the assigned session id */
     // printf("Cliente tfs mount: Vamos tentar ler a resposta do servidor\n");
-    fread(&operation_result, sizeof(int), 1, fcli);
-    printf("O operation result é %d\n", operation_result);
-    if (operation_result == -1) {
+    fread(&id, sizeof(int), 1, fcli);
+    printf("O operation result é %d\n", id);
+    if (id == -1) {
         /* Failed to mount to tfs server */
         return -1;
     }
 
 
-    // printf("Cliente tfs mount: Operação concluída com sucesso.\n");
+    /* Update client info */
+    session_id = id;
+    pipe_path = client_pipe_path;
+
+    printf("Cliente tfs mount: Operação concluída com sucesso.\n");
 
     return 0;
 }
 
 int tfs_unmount() {
     /* TODO: Implement this */
-    return -1;
+    size_t size_written = 0;
+    int operation_result;
+
+    printf("Cliente tfs unmount: Vamos começar a operação\n");
+
+    /* Write OP code to server's named pipe */
+
+    int op_code = TFS_OP_CODE_MOUNT;
+    printf("Cliente tfs unmount: vamos escrever para o pipe o opcode\n");
+    size_written = fwrite(&op_code, sizeof(int), 1, fserv);
+    if ((size_written * sizeof(int)) < sizeof(int)) {
+        /* Failed to write OP code to server's named pipe */
+        return -1;
+    }
+
+    /* Write session id to pipe */
+    printf("Cliente tfs unmount: Vamos escrever o session id para o pipe\n");
+    size_written = fwrite(&session_id, sizeof(int), 1, fserv);
+    if ((size_written * sizeof(int)) < sizeof(int)) {
+        /* Failed to write session id to server's named pipe */
+        return -1;
+    }
+
+
+    /* Read server's answer */
+    fread(&operation_result, sizeof(int), 1, fcli);
+
+    /* Close pipes */
+
+    if (fclose(fcli) != 0) {
+        /* Failed to close client's named pipe */
+        return -1;
+    }
+
+    if (fclose(fserv) != 0) {
+        /* Failed to close server's named pipe */
+        return -1;
+    }
+
+    /* Remove client's path */
+    unlink(pipe_path);
+
+    return operation_result;
 }
 
 int tfs_open(char const *name, int flags) {
