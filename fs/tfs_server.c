@@ -9,7 +9,7 @@
 #include <unistd.h> // Not sure se este é preciso
 
 //TODO: Redifine in config.h
-//TODO: Verificar se estamos sempre a devolver erro ao cliente
+//TODO: Verificar se estamos sempre a devolver erro ao cliente (escrevendo no pipe) --> Talvez criar função para isso
 //TODO: Perguntar ao prof se é para fechar (do lado do servidor) o pipe do cliente sempre que termina uma operação ou se é só no unmount
 #define S 64 /* confirmar isto com os profs. É suposto ser o nº de possíveis sessões ativas */
 #define FREE 1
@@ -153,6 +153,12 @@ int tfs_unmount(int id) {
     return 0;
 }
 
+int treat_open_request(int id, char *name, int flags) {
+    //TODO implementar
+
+    return 0;
+}
+
 int treat_request(char *buff, FILE *fserv) {
     int op_code = buff[0], session_id = -1;
     char pipe_path[PIPE_PATH_SIZE];
@@ -162,7 +168,7 @@ int treat_request(char *buff, FILE *fserv) {
     // printf("Servidor treat_request: o opcode é %d\n", op_code);
     if (op_code == TFS_OP_CODE_MOUNT) {
         /* Skip op code */
-        fread(path, 1, sizeof(path), fserv);
+        fread(path, sizeof(char), sizeof(path), fserv);
         // printf("buff: %s\n", path);
         // printf("O buffer na sua inteiridade é %s\n", path);
         // printf("Servidor treat_request: Queremos fazer mount, por isso vamos copiar o client pipe path do buffer\n");
@@ -174,14 +180,24 @@ int treat_request(char *buff, FILE *fserv) {
         }
     }
     else if (op_code == TFS_OP_CODE_UNMOUNT ) {
-        fread(&session_id, 1, sizeof(int), fserv);
+        fread(&session_id, sizeof(int), 1, fserv);
 
-        if (session_id == -1 || tfs_unmount(session_id) == -1) {
+        if (valid_id(session_id) || tfs_unmount(session_id) == -1) {
             printf("Servidor treat request (unmount): O pedido falhou\n");
             return -1;
         }
     }
     else if (op_code == TFS_OP_CODE_OPEN) {
+        char *name;
+        int flags;
+        fread(&session_id, sizeof(int), 1, fserv);
+        fread(name, sizeof(char), FILE_NAME_SIZE, fserv);
+        fread(&flags, sizeof(int), 1, fserv);
+
+        if (valid_id(session_id) || treat_open_request(session_id, name, flags)) {
+            printf("Servidor treat request (open): O pedido falhou\n");
+            return -1;
+        }
     }
     else if (op_code == TFS_OP_CODE_CLOSE) {
     }
