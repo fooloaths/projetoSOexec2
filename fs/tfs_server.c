@@ -9,6 +9,8 @@
 #include <unistd.h> // Not sure se este é preciso
 
 //TODO: Redifine in config.h
+//TODO: Verificar se estamos sempre a devolver erro ao cliente
+//TODO: Perguntar ao prof se é para fechar (do lado do servidor) o pipe do cliente sempre que termina uma operação ou se é só no unmount
 #define S 64 /* confirmar isto com os profs. É suposto ser o nº de possíveis sessões ativas */
 #define FREE 1
 #define TAKEN 0
@@ -46,9 +48,27 @@ int get_free_session_id() {
     return -1;
 }
 
+int valid_id(int id) {
+    return id >= 0 && id < S;
+}
+
+int session_id_is_free(int id) {
+    return session_ids[id] == FREE;
+}
+
+void terminate_session(int id) {
+    session_ids[id] = FREE;
+
+    for (size_t i = 0; i < PIPE_PATH_SIZE; i++) {
+        if (client_pipes[id][i] == '\0') {
+            break;
+        }
+        client_pipes[id][i] = '\0';
+    }
+}
 
 int tfs_mount(char *path) {
-    int id, operation_result;
+    int id;
     size_t  bytes_written = 0;
     FILE *fcli;
 
@@ -67,10 +87,8 @@ int tfs_mount(char *path) {
     // printf("Servidor tfs_mount: Vamos tentar obter o primeiro session id livre\n");
     id = get_free_session_id();
     // printf("Servidor tfs_mount: O id é %d\n", id);
-    operation_result = 13;
     if (id == -1) {
-        operation_result = -1;
-        bytes_written = fwrite(&operation_result, sizeof(int), 1, fcli);
+        bytes_written = fwrite(&id, sizeof(int), 1, fcli);
 
         return -1;
     }
@@ -81,7 +99,7 @@ int tfs_mount(char *path) {
     strcpy(client_pipes[id], path);
     // printf("Servidor tfs_mount: O path guardado do pipe agora é %s\n", client_pipes[id]);
     // printf("Servidor tfs_mount: Vamos escrever o resultado no pipe do cliente\n");
-    bytes_written = fwrite(&operation_result, sizeof(int), 1, fcli);
+    bytes_written = fwrite(&id, sizeof(int), 1, fcli);
     // printf("O número de bytes written é %ld e o sizeof(int) é %ld\n", bytes_written, sizeof(operation_result));
     if ((bytes_written * sizeof(int)) != sizeof(int)) {
         printf("Servidor tfs_mount: Falhou ao escrever o resultado da operação\n");
@@ -100,8 +118,43 @@ int tfs_mount(char *path) {
     return id;
 }
 
+int tfs_unmount(int id) {
+    //TODO Falta escrever no pipe quando falha
+    int operation_result = 0;
+    size_t size_written = 0;
+    FILE *fcli;
+
+    if (!valid_id(id)) {
+        return -1;
+    }
+
+    if (session_id_is_free(id)) {
+        /* There was nothing to unmount */
+        return -1;
+    }
+
+    if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
+        perror("Erro");
+        return -1;
+    }
+    size_written = fwrite(&operation_result, sizeof(int), 1, fcli);
+
+    if ((size_written * sizeof(int)) < sizeof(int)) {
+        return -1;
+    }
+
+    if (fclose(fcli) != 0) {
+        perror("Erro");
+        return -1;
+    }
+
+    terminate_session(id);
+
+    return 0;
+}
+
 int treat_request(char *buff, FILE *fserv) {
-    int op_code = buff[0];
+    int op_code = buff[0], session_id = -1;
     char pipe_path[PIPE_PATH_SIZE];
     char path[PIPE_PATH_SIZE + 1];
 
@@ -116,11 +169,17 @@ int treat_request(char *buff, FILE *fserv) {
         // printf("pipe path é %s\n", path);
         // printf("Servidor treat_request: Vamos tentar fazer tfs_mount\n");
         if (tfs_mount(path) == -1) {
-            printf("Servidor treat_request: O pedido falhou\n");
+            printf("Servidor treat_request (mount): O pedido falhou\n");
             return -1;
         }
     }
     else if (op_code == TFS_OP_CODE_UNMOUNT ) {
+        fread(&session_id, 1, sizeof(int), fserv);
+
+        if (session_id == -1 || tfs_unmount(session_id) == -1) {
+            printf("Servidor treat request (unmount): O pedido falhou\n");
+            return -1;
+        }
     }
     else if (op_code == TFS_OP_CODE_OPEN) {
     }
@@ -132,10 +191,10 @@ int treat_request(char *buff, FILE *fserv) {
     }
     else if (op_code == TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED) {
     }
-    else {
-        //op code does not exist
-        return -1;
-    }
+    // else {
+    //     //op code does not exist
+    //     return -1;
+    // }
 
     printf("Servidor treat_request: O pedido foi executado com exito\n");
 
@@ -169,21 +228,23 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    // /* Open server's named pipe */
-    // if ((fserv = fopen(pipename, "r")) == NULL) {
-    //     printf("cccc\n");
-    //     return -1;
-    // }
+        /* Open server's named pipe */
+        printf("Servidor: Vamos tentar abrir o pipe do servidor em read\n");
+        if ((fserv = fopen(pipename, "r")) == NULL) {
+            printf("Servidor: Falhou ao abrir o lado do servidor\n");
+            return -1;
+        }
 
 
     /* TO DO */
     /* Main loop */
     while (1) {
-        /* Open server's named pipe */
-        if ((fserv = fopen(pipename, "r")) == NULL) {
-            printf("Servidor: Falhou ao abrir o lado do servidor\n");
-            return -1;
-        }
+        // /* Open server's named pipe */
+        // printf("Servidor: Vamos tentar abrir o pipe do servidor em read\n");
+        // if ((fserv = fopen(pipename, "r")) == NULL) {
+        //     printf("Servidor: Falhou ao abrir o lado do servidor\n");
+        //     return -1;
+        // }
 
         /* Read requests from pipe */
         // // // printf("l\n");
