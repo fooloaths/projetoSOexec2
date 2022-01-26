@@ -53,11 +53,11 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     /* Write to the server's named pipe the path to the client side of the
      * pipe */
     path_size = strlen(client_pipe_path) + 1; /* Take into account \0 */
-    int op_code = TFS_OP_CODE_MOUNT;
+    char op_code = TFS_OP_CODE_MOUNT;
     printf("Cliente tfs mount: vamos escrever para o pipe o opcode\n");
-    size_written = fwrite(&op_code, sizeof(int), 1, fserv);
+    size_written = fwrite(&op_code, sizeof(char), 1, fserv);
     // // // if (size_written <= 0) {
-    if ((size_written * sizeof(int)) < sizeof(int)) {
+    if ((size_written != 1)) {
         /* Error occured */
         return -1;
     }
@@ -65,16 +65,16 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     // // // size_written = write(fserv, client_pipe_path, path_size);
     strncpy(buff, client_pipe_path, path_size);
     // printf("Cliente tfs mount: Vamos escrever para o pipe do servidor o client pipe path\n");
-    size_written = fwrite(buff, sizeof(int), 40, fserv);
+    size_written = fwrite(buff, sizeof(char), 40, fserv);
     // printf("O buffer é %s\n", buff);
     // size_written = fwrite(client_pipe_path, sizeof(int), 40, fserv); //Falta meter '\0s até encher os 40 slots
     // printf("\nESCREVERAM-SE %ld bytes\n\n", size_written);
     // // // if (size_written <= 0) {
-    if ((size_written * sizeof(int)) < (40 * sizeof(int))) {
+    if ((size_written != sizeof(char) * 40)) {
         /* Error occured or nothing was written */
         return -1;
     }
-
+    
     // printf("Cliente tfs mount: Vamos fechar o pipe do servidor\n");
     if (fclose(fserv) != 0) {
         return -1;

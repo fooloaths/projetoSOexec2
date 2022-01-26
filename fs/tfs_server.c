@@ -159,11 +159,12 @@ int treat_open_request(int id, char *name, int flags) {
     return 0;
 }
 
-int treat_request(char *buff, FILE *fserv) {
-    int op_code = buff[0], session_id = -1;
+int treat_request(char buff, FILE *fserv) {
+    int op_code = buff, session_id = -1;
     char pipe_path[PIPE_PATH_SIZE];
-    char path[PIPE_PATH_SIZE + 1];
+    char path[PIPE_PATH_SIZE];
 
+    printf("O op_code é %d\n", op_code);
     // printf("Servidor treat_request: Vamos começar a operação\n");
     // printf("Servidor treat_request: o opcode é %d\n", op_code);
     if (op_code == TFS_OP_CODE_MOUNT) {
@@ -207,10 +208,10 @@ int treat_request(char *buff, FILE *fserv) {
     }
     else if (op_code == TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED) {
     }
-    // else {
-    //     //op code does not exist
-    //     return -1;
-    // }
+    else {
+        printf("Servidor treat_request: O pedido não é válido\n");
+        return -1;
+    }
 
     printf("Servidor treat_request: O pedido foi executado com exito\n");
 
@@ -222,7 +223,7 @@ int treat_request(char *buff, FILE *fserv) {
 int main(int argc, char **argv) {
     FILE *fserv;
     size_t r_buffer;
-    char buff[41] = {'\0'}; //Valor temporário
+    char buff = '\0'; //Valor temporário
     // // int fcli[10];
 
     if (argc < 2) {
@@ -245,12 +246,11 @@ int main(int argc, char **argv) {
     }
 
         /* Open server's named pipe */
-        printf("Servidor: Vamos tentar abrir o pipe do servidor em read\n");
-        if ((fserv = fopen(pipename, "r")) == NULL) {
-            printf("Servidor: Falhou ao abrir o lado do servidor\n");
-            return -1;
-        }
-
+    printf("Servidor: Vamos tentar abrir o pipe do servidor em read\n");
+    if ((fserv = fopen(pipename, "r")) == NULL) {
+        printf("Servidor: Falhou ao abrir o lado do servidor\n");
+        return -1;
+    }
 
     /* TO DO */
     /* Main loop */
@@ -265,7 +265,16 @@ int main(int argc, char **argv) {
         /* Read requests from pipe */
         // // // printf("l\n");
         printf("Servidor main loop: Vamos ler o op code\n");
-        r_buffer = fread(buff, sizeof(int), 1, fserv); /* OP_CODE + id + missing flags */
+        r_buffer = fread(&buff, 1, 1, fserv); /* OP_CODE + id + missing flags */
+        if (r_buffer == 0) {
+            fclose(fserv);
+            if ((fserv = fopen(pipename, "r")) == NULL) {
+                printf("Servidor: Falhou ao abrir o lado do servidor\n");
+                return -1;
+            }
+            continue;
+        }
+
         /*if (r_buffer == -1) {
             return -1;
         }        */
