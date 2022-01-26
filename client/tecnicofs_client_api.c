@@ -220,13 +220,118 @@ int tfs_open(char const *name, int flags) {
 }
 
 int tfs_close(int fhandle) {
-    // // if (tfs_close(fhandle) == )
-    return -1;
+    //TODO IMPLEMENTAR
+
+    printf("Cliente tfs close: Iniciar operação\n");
+
+    size_t size_written; /* OP code, id, name and flags */
+    int operation_result;
+
+    printf("Cliente tfs close: Vamos abrir o pipe do servidor em write\n");
+    if ((fserv = fopen(server_pipe, "w" )) == NULL) {
+        return -1;
+    }
+
+    printf("Cliente tfs close: Vamos escrever o opcode\n");
+    char opcode = TFS_OP_CODE_CLOSE;
+    size_written = fwrite(&opcode, sizeof(char), 1, fserv);
+    // // // printf("Escrevemos %ld bytes e o opcode é %d\n", size_written, opcode);
+    // if (size_written < size) {
+    //     return -1;
+    // }
+
+    printf("Cliente tfs close: Vamos escrever o session id\n");
+    size_written = fwrite(&session_id, sizeof(int), 1, fserv);
+    // if (size_written < size) {
+    //     return -1;
+    // }
+
+    printf("Cliente tfs close: Vamos escrever o file handle\n");
+    size_written = fwrite(&fhandle, sizeof(int), 1, fserv);
+    // if (size_written < size) {
+    //     return -1;
+    // }
+
+    printf("Cliente tfs close: Vamos fechar o pipe do servidor\n");
+    if (fclose(fserv) != 0) {
+        return -1;
+    }
+
+
+    printf("Cliente tfs close: Vamos ler o resultado\n");
+    /* Read answer */
+    fread(&operation_result, sizeof(int), 1, fcli);
+        //Falta o check for error da syscall/se leu o suficiente
+
+    // // // printf("Cliente tfs_open: O resultado foi %d\n", operation_result);
+
+    printf("Cliente tfs close: Operação terminada\n");
+
+    return operation_result;
 }
 
 ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
-    /* TODO: Implement this */
-    return -1;
+    //TODO implementar
+
+    printf("Cliente tfs write: Iniciar operação\n");
+
+    size_t size_written; /* OP code, id, name and flags */
+    int operation_result;
+
+    printf("Cliente tfs write: Vamos abrir o pipe do servidor em write\n");
+    if ((fserv = fopen(server_pipe, "w" )) == NULL) {
+        return -1;
+    }
+
+    printf("Cliente tfs write: Vamos escrever o opcode\n");
+    char opcode = TFS_OP_CODE_WRITE;
+    size_written = fwrite(&opcode, sizeof(char), 1, fserv);
+    // // // printf("Escrevemos %ld bytes e o opcode é %d\n", size_written, opcode);
+    // if (size_written < size) {
+    //     return -1;
+    // }
+
+    printf("Cliente tfs write: Vamos escrever o session id\n");
+    size_written = fwrite(&session_id, sizeof(int), 1, fserv);
+    // if (size_written < size) {
+    //     return -1;
+    // }
+
+    printf("Cliente tfs write: Vamos escrever o file handle\n");
+    size_written = fwrite(&fhandle, sizeof(int), 1, fserv);
+    // if (size_written < size) {
+    //     return -1;
+    // }
+
+    printf("Cliente tfs write: Vamos escrever o tamanho\n");
+    size_written = fwrite(&len, sizeof(size_t), 1, fserv);
+    // if (size_written < size) {
+    //     return -1;
+    // }
+
+    printf("Cliente tfs write: Vamos escrever o buffer\n");
+    size_written = fwrite(&buffer, sizeof(char), len, fserv); //TODO maybe ver se é preciso '\0's até satisfazer o tamanho len
+    // if (size_written < size) {
+    //     return -1;
+    // }
+
+
+    printf("Cliente tfs write: Vamos fechar o pipe do servidor\n");
+    if (fclose(fserv) != 0) {
+        return -1;
+    }
+
+    printf("Cliente tfs write: Vamos ler o resultado\n");
+    /* Read answer */
+    fread(&operation_result, sizeof(int), 1, fcli);
+    if (operation_result == -1) {
+        return -1;
+    }
+        //Falta o check for error da syscall/se leu o suficiente
+
+    printf("Cliente tfs write: Operação terminada\n");
+
+    return len;
 }
 
 ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
