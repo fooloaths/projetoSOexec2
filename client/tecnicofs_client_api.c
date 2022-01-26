@@ -17,6 +17,7 @@
 
 static int session_id = -1;
 static char const *pipe_path = NULL;
+static char const *server_pipe = NULL;
 static FILE *fserv, *fcli;
 
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
@@ -107,6 +108,7 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     /* Update client info */
     session_id = id;
     pipe_path = client_pipe_path;
+    server_pipe = server_pipe_path;
 
     printf("Cliente tfs mount: Operação concluída com sucesso.\n");
 
@@ -122,12 +124,17 @@ int tfs_unmount() {
 
     printf("Cliente tfs unmount: Vamos começar a operação\n");
 
+
+    if ((fserv = fopen(server_pipe, "w")) == NULL) {
+        return -1;
+    }
+
     /* Write OP code to server's named pipe */
 
-    int op_code = TFS_OP_CODE_MOUNT;
+    int op_code = TFS_OP_CODE_UNMOUNT;
     printf("Cliente tfs unmount: vamos escrever para o pipe o opcode\n");
-    size_written = fwrite(&op_code, sizeof(int), 1, fserv);
-    if ((size_written * sizeof(int)) < sizeof(int)) {
+    size_written = fwrite(&op_code, sizeof(char), 1, fserv);
+    if (size_written < sizeof(char)) {
         /* Failed to write OP code to server's named pipe */
         return -1;
     }
@@ -142,15 +149,16 @@ int tfs_unmount() {
 
 
     /* Read server's answer */
+    printf("Cliente tfs unmount: Vamos ler o resultado da operação\n");
     fread(&operation_result, sizeof(int), 1, fcli);
 
     /* Close pipes */
-
+    printf("Cliente tfs unmount: Vamos fechar o pipe do cliente\n");
     if (fclose(fcli) != 0) {
         /* Failed to close client's named pipe */
         return -1;
     }
-
+    printf("Cliente tfs unmount: Vamos fechar o pipe do servidor\n");
     if (fclose(fserv) != 0) {
         /* Failed to close server's named pipe */
         return -1;
@@ -164,38 +172,49 @@ int tfs_unmount() {
 
 int tfs_open(char const *name, int flags) {
     /* TODO: Implement this */
-    printf("Cliente tfs_open: Início da operação\n");
-    size_t size_written, size = 1 + 1 + FILE_NAME_SIZE + 1; /* OP code, id, name and flags */
-    char *message = (char *) malloc(sizeof(char) * (size + 1));
+    // printf("Cliente tfs_open: Início da operação\n");
+    size_t size_written; /* OP code, id, name and flags */
     // char OP_CODE[2], id[2], flag[2];
     int operation_result;
 
-    if (message == NULL) {
+    if ((fserv = fopen(server_pipe, "w" )) == NULL) {
         return -1;
     }
-    // message[0] = '\0';
-    // OP_CODE[0] = TFS_OP_CODE_OPEN + '0'; OP_CODE[1] = '\0'; //TODO Este código está feio que doi
-    // id[0] = session_id + '0'; id[1] = '\0';                 //TODO Perguntar ao prof se há maneira mais bonita de fazer isto
-    // flag[0] = flags + '0'; flag[1] = '\0';
 
-    // strcat(message, OP_CODE);
-    // strcat(message, id);
-    message[0] = TFS_OP_CODE_OPEN + '0';
-    message[1] = session_id + '0';
-    message[2] = '\0';
-    strcat(message, name); //Ver se esta linha está a copiar os 40 bytes do nome e não só até ao '\0'
-    message[2 + FILE_NAME_SIZE + 1] = flags + '0'; //TODO será que isto preserva a representação binária da flag? (Perguntar ao prof)
-    // strcat(message, flag);
+    char opcode = TFS_OP_CODE_OPEN;
+    size_written = fwrite(&opcode, sizeof(char), 1, fserv);
+    // // // printf("Escrevemos %ld bytes e o opcode é %d\n", size_written, opcode);
+    // if (size_written < size) {
+    //     return -1;
+    // }
 
-    /* Send request */
-    size_written = fwrite(message, sizeof(char), size, fserv);
-    if (size_written < size) {
+    size_written = fwrite(&session_id, sizeof(int), 1, fserv);
+    // if (size_written < size) {
+    //     return -1;
+    // }
+
+    size_written = fwrite(name, sizeof(char), FILE_NAME_SIZE, fserv);
+    // if (size_written < size) {
+    //     return -1;
+    // }
+
+    size_written = fwrite(&flags, sizeof(int), 1, fserv);
+    // if (size_written < size) {
+    //     return -1;
+    // }
+
+    // // // printf("Cliente tfs open: Já escrevemos tudo, vamos fechar o pipe do servidor\n");
+    if (fclose(fserv) != 0) {
         return -1;
     }
+
+    // // // printf("Cliente tfs open: Vamos ler a resposta do servidor\n");
 
     /* Read answer */
     fread(&operation_result, sizeof(int), 1, fcli);
         //Falta o check for error da syscall/se leu o suficiente
+
+    // // // printf("Cliente tfs_open: O resultado foi %d\n", operation_result);
 
     return operation_result;
 }
