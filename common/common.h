@@ -20,5 +20,6 @@ enum {
 };
 
 #define PIPE_PATH_SIZE 40
+#define FILE_NAME_SIZE 40
 
 #endif /* COMMON_H */
