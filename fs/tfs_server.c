@@ -126,36 +126,36 @@ int tfs_unmount(int id) {
     size_t size_written = 0;
     FILE *fcli;
 
-    printf("Servidor unmount: Operação começou\n");
-    printf("Servidor unmount: Vamos ver se o id estava de facto taken\n");
+    // printf("Servidor unmount: Operação começou\n");
+    // printf("Servidor unmount: Vamos ver se o id estava de facto taken\n");
     if (session_id_is_free(id)) {
         /* There was nothing to unmount */
         return -1;
     }
 
-    printf("Servidor unmount: Vamos abrir o pipe do cliente\n");
+    // printf("Servidor unmount: Vamos abrir o pipe do cliente\n");
     if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
         perror("Erro");
         return -1;
     }
 
-    printf("Servidor unmount: Vamos terminar a sessão\n");
+    // printf("Servidor unmount: Vamos terminar a sessão\n");
     terminate_session(id);
 
-    printf("Servidor unmount: Vamos escrever o resultado\n");
+    // printf("Servidor unmount: Vamos escrever o resultado\n");
     size_written = fwrite(&operation_result, sizeof(int), 1, fcli);
 
     if ((size_written * sizeof(int)) < sizeof(int)) {
         return -1;
     }
 
-    printf("Servidor unmount: Vamos fechar o pipe do cliente\n");
+    // printf("Servidor unmount: Vamos fechar o pipe do cliente\n");
     if (fclose(fcli) != 0) {
         perror("Erro");
         return -1;
     }
 
-    printf("Servidor unmount: Operação terminada com sucesso\n");
+    // printf("Servidor unmount: Operação terminada com sucesso\n");
 
     return 0;
 }
@@ -217,9 +217,9 @@ int treat_close_request(int id, int fhandle) {
     return operation_result;
 }
 
-int treat_write_request(int id, int fhandle, size_t len, char *buff) {
+ssize_t treat_write_request(int id, int fhandle, size_t len, char *buff) {
     FILE *fcli;
-    int operation_result = 0;
+    ssize_t operation_result = 0;
     size_t size_written = 0;
     // // // printf("Servidor treat_write_request: A começar a operação\n");
 
@@ -228,8 +228,77 @@ int treat_write_request(int id, int fhandle, size_t len, char *buff) {
     if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
         return -1;
     }
-
     operation_result = tfs_write(fhandle, buff, len);
+
+    size_written = fwrite(&operation_result, sizeof(ssize_t), 1, fcli);
+    if ((size_written * sizeof(ssize_t)) < sizeof(ssize_t)) {
+        return -1;
+    }
+
+    if (fclose(fcli) != 0) {
+        return -1;
+    }
+
+    return operation_result;
+}
+
+ssize_t treat_request_read(int id, int fhandle, size_t len) {
+    char *buff = (char *) malloc(sizeof(char) * len);
+    FILE *fcli;
+    ssize_t operation_result = 0;
+    size_t size_written = 0;
+
+    if (buff == NULL) {
+        //TODO send reply
+        return -1;
+    }
+    // // // printf("Servidor treat_write_request: A começar a operação\n");
+
+    /* Open client pipe */
+    // // // printf("Servidor write request: Vamos abrir o pipe do cliente em write\n");
+    if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
+        return -1;
+    }
+
+    operation_result = tfs_read(fhandle, buff, len);
+
+
+
+    size_written = fwrite(&operation_result, sizeof(ssize_t), 1, fcli);
+    if ((size_written * sizeof(ssize_t)) < sizeof(ssize_t)) {
+        return -1;
+    }
+
+    if (operation_result != -1) {
+        size_written = fwrite(buff, sizeof(char), operation_result, fcli);
+    
+        if ((size_written * sizeof(ssize_t)) < sizeof(ssize_t)) {
+            return -1;
+        }
+    }
+
+
+    if (fclose(fcli) != 0) {
+        return -1;
+    }
+    // printf("\n\n O número de bytes lidos foi %ld\n\n", operation_result);
+    // printf("Servidor tfs read: Operação terminada\n");
+
+    return operation_result;
+}
+
+int treat_request_shutdown(int id) {
+    FILE *fcli;
+    ssize_t operation_result = 0;
+    size_t size_written = 0;
+
+    /* Open client pipe */
+    // // // printf("Servidor write request: Vamos abrir o pipe do cliente em write\n");
+    if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
+        return -1;
+    }
+
+    operation_result = tfs_destroy_after_all_closed();
 
     size_written = fwrite(&operation_result, sizeof(int), 1, fcli);
     if ((size_written * sizeof(int)) < sizeof(int)) {
@@ -240,7 +309,11 @@ int treat_write_request(int id, int fhandle, size_t len, char *buff) {
         return -1;
     }
 
-    return operation_result;
+    if (operation_result == -1) {
+        return -1;
+    }
+
+    exit(0);
 }
 
 int treat_request(char buff, FILE *fserv) {
@@ -266,6 +339,7 @@ int treat_request(char buff, FILE *fserv) {
         }
     }
     else if (op_code == TFS_OP_CODE_UNMOUNT ) {
+        // printf("Servidor treat request: VAMOS TRATAR DE UM UNMOUNT\n");
         fread(&session_id, sizeof(int), 1, fserv);
 
         if (!valid_id(session_id) || tfs_unmount(session_id) == -1) {
@@ -274,15 +348,15 @@ int treat_request(char buff, FILE *fserv) {
         }
     }
     else if (op_code == TFS_OP_CODE_OPEN) {
-        printf("Servidor treat request: Vamos tratar de um open\n");
+        // printf("Servidor treat request: Vamos tratar de um open\n");
         char name[FILE_NAME_SIZE];
         int flags;
         fread(&session_id, sizeof(int), 1, fserv);
-        printf("Leu o session id que é = a %d\n", session_id);
+        // printf("Leu o session id que é = a %d\n", session_id);
         fread(name, sizeof(char), FILE_NAME_SIZE, fserv);
-        printf("Leu o nome do ficheiro que é %s\n", name);
+        // printf("Leu o nome do ficheiro que é %s\n", name);
         fread(&flags, sizeof(int), 1, fserv);
-        printf("Conseguiu ler tudo\n");
+        // printf("Conseguiu ler tudo\n");
 
         if (!valid_id(session_id) || treat_open_request(session_id, name, flags) == -1) {
             printf("Servidor treat request (open): O pedido falhou\n");
@@ -290,7 +364,7 @@ int treat_request(char buff, FILE *fserv) {
         }
     }
     else if (op_code == TFS_OP_CODE_CLOSE) {
-        printf("Servidor treat request: Vamos tratar de um close");
+        // printf("Servidor treat request: Vamos tratar de um close\n");
         int fhandle;
         fread(&session_id, sizeof(int), 1, fserv);
         fread(&fhandle, sizeof(int), 1, fserv);
@@ -301,30 +375,45 @@ int treat_request(char buff, FILE *fserv) {
         }
     }
     else if (op_code == TFS_OP_CODE_WRITE) {
-        printf("Servidor treat request: Vamos tratar de um write");
+        // printf("Servidor treat request: Vamos tratar de um write\n");
         int fhandle;
         fread(&session_id, sizeof(int), 1, fserv);
         fread(&fhandle, sizeof(int), 1, fserv);
         fread(&len, sizeof(size_t), 1, fserv);
-        char buff[len];
+        char buffer[len];
 
-        fread(&buff, sizeof(char), len, fserv);
+        fread(&buffer, sizeof(char), sizeof(buffer), fserv);
 
-        if (!valid_id(session_id) || treat_write_request(session_id, fhandle, len, buff) == -1) {
+        if (!valid_id(session_id) || treat_write_request(session_id, fhandle, len, buffer) == -1) {
             printf("Servidor treat request (write): O pedido falhou\n");
             return -1;
         }
     }
     else if (op_code == TFS_OP_CODE_READ) {
+        // printf("Servidor treat request: Vamos tratar de um read\n");
+        int fhandle;
+        fread(&session_id, sizeof(int), 1, fserv);
+        fread(&fhandle, sizeof(int), 1, fserv);
+        fread(&len, sizeof(size_t), 1, fserv);
+
+        if (!valid_id(session_id) || treat_request_read(session_id, fhandle, len) == -1) {
+            return -1;
+        }
     }
     else if (op_code == TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED) {
+        // printf("Servidor treat request: Vamos tratar de um shutdown\n");
+        fread(&session_id, sizeof(int), 1, fserv);
+
+        if (!valid_id(session_id) || treat_request_shutdown(session_id) == -1) {
+            return -1;
+        }
     }
     else {
         printf("Servidor treat_request: O pedido não é válido\n");
         return -1;
     }
 
-    printf("Servidor treat_request: O pedido foi executado com exito\n");
+    // printf("Servidor treat_request: O pedido foi executado com exito\n");
 
     return 0;
 }
@@ -357,7 +446,7 @@ int main(int argc, char **argv) {
     }
 
         /* Open server's named pipe */
-    printf("Servidor: Vamos tentar abrir o pipe do servidor em read\n");
+    // printf("Servidor: Vamos tentar abrir o pipe do servidor em read\n");
     if ((fserv = fopen(pipename, "r")) == NULL) {
         printf("Servidor: Falhou ao abrir o lado do servidor\n");
         return -1;
@@ -366,17 +455,11 @@ int main(int argc, char **argv) {
     /* TO DO */
     /* Main loop */
     while (1) {
-        // /* Open server's named pipe */
-        // printf("Servidor: Vamos tentar abrir o pipe do servidor em read\n");
-        // if ((fserv = fopen(pipename, "r")) == NULL) {
-        //     printf("Servidor: Falhou ao abrir o lado do servidor\n");
-        //     return -1;
-        // }
+
 
         /* Read requests from pipe */
-        // // // printf("l\n");
-        printf("Servidor main loop: Vamos ler o op code\n");
-        r_buffer = fread(&buff, 1, 1, fserv); /* OP_CODE + id + missing flags */
+        // printf("Servidor main loop: Vamos ler o op code\n");
+        r_buffer = fread(&buff, 1, 1, fserv);
         if (r_buffer == 0) {
             fclose(fserv);
             if ((fserv = fopen(pipename, "r")) == NULL) {
@@ -386,9 +469,6 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        /*
-         * TODO Falta ver condição que é para terminar o loop
-         * */
 
         if (treat_request(buff, fserv) == -1) {
             printf("Servidor: Falhou ao tratar do pedido\n");
@@ -396,9 +476,6 @@ int main(int argc, char **argv) {
         }
 
     }
-
-
-    // // unlink(pipename); /* Não sei se isto é preciso. Perguntar ao prof/piazza */
 
     return 0;
 }

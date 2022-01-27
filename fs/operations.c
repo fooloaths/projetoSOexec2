@@ -35,7 +35,6 @@ int tfs_init() {
     /* create root inode */
     int root = inode_create(T_DIRECTORY);
     if (root != ROOT_DIR_INUM) {
-        printf("TFS INIT FALHOU GRAVE\n");
         return -1;
     }
 
@@ -165,13 +164,11 @@ static int _tfs_open_unsynchronized(char const *name, int flags) {
 }
 
 int tfs_open(char const *name, int flags) {
-    printf("Operations tfs open: Entramos no tfs open\n");
     int failed = 0;
     while (tfs_state != INITIALIZED) {
         failed = 1;
         pthread_cond_wait(&cond_initialized_system, &destruction_lock);
     }
-    printf("Operations tfs_open: O sistema estava inicializado\n");
 
 
     if (failed) {
