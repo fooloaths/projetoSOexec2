@@ -152,7 +152,7 @@ static int _tfs_open_unsynchronized(char const *name, int flags) {
         offset = 0;
     } else {
         return -1;
-    }
+    }   
 
     /* Finally, add entry to the open file table and
      * return the corresponding handle */

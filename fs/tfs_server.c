@@ -317,9 +317,10 @@ int treat_request_shutdown(int id) {
 }
 
 int treat_request(char buff, FILE *fserv) {
-    char op_code = buff, session_id = -1;
+    char op_code = buff;
+    int session_id = -1;
     size_t len;
-    char pipe_path[PIPE_PATH_SIZE];
+    char pipe_path[PIPE_PATH_SIZE]; 
     char path[PIPE_PATH_SIZE];
 
     // printf("O op_code é %d\n", op_code);
