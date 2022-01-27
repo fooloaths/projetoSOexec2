@@ -456,8 +456,6 @@ int main(int argc, char **argv) {
     /* TO DO */
     /* Main loop */
     while (1) {
-
-
         /* Read requests from pipe */
         // printf("Servidor main loop: Vamos ler o op code\n");
         r_buffer = fread(&buff, 1, 1, fserv);
@@ -470,12 +468,10 @@ int main(int argc, char **argv) {
             continue;
         }
 
-
         if (treat_request(buff, fserv) == -1) {
             printf("Servidor: Falhou ao tratar do pedido\n");
             return -1;
         }
-
     }
 
     return 0;
