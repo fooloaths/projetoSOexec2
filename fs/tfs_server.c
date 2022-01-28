@@ -232,7 +232,7 @@ ssize_t treat_write_request(int id, int fhandle, size_t len, char *buff) {
 
     size_written = fwrite(&operation_result, sizeof(ssize_t), 1, fcli);
     if ((size_written * sizeof(ssize_t)) < sizeof(ssize_t)) {
-        return -1;
+        return -1;  
     }
 
     if (fclose(fcli) != 0) {
@@ -428,7 +428,7 @@ int main(int argc, char **argv) {
     // // int fcli[10];
 
     if (argc < 2) {
-        printf("Please specify the pathname of the server's pipe.\n");
+        printf("Plea    se specify the pathname of the server's pipe.\n");
         return 1;
     }
 

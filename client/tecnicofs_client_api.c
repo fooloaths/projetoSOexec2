@@ -24,7 +24,7 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     int id;
     // FILE *fserv, *fcli; 
     size_t path_size, size_written = 0;
-    char buff[PIPE_PATH_SIZE] = {'\0'};
+    char buff[PIPE_PATH_SIZE + 1] = {'\0'};
 
     unlink(client_pipe_path);
 
@@ -55,23 +55,10 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
      * pipe */
     path_size = strlen(client_pipe_path) + 1; /* Take into account \0 */
     char op_code = TFS_OP_CODE_MOUNT;
-    // printf("Cliente tfs mount: vamos escrever para o pipe o opcode\n");
-    size_written = fwrite(&op_code, sizeof(char), 1, fserv);
-    // // // if (size_written <= 0) {
-    if ((size_written != 1)) {
-        /* Error occured */
-        return -1;
-    }
-
-    // // // size_written = write(fserv, client_pipe_path, path_size);
-    strncpy(buff, client_pipe_path, path_size);
-    // printf("Cliente tfs mount: Vamos escrever para o pipe do servidor o client pipe path\n");
-    size_written = fwrite(buff, sizeof(char), 40, fserv);
-    // printf("O buffer é %s\n", buff);
-    // size_written = fwrite(client_pipe_path, sizeof(int), 40, fserv); //Falta meter '\0s até encher os 40 slots
-    // printf("\nESCREVERAM-SE %ld bytes\n\n", size_written);
-    // // // if (size_written <= 0) {
-    if ((size_written != sizeof(char) * 40)) {
+    buff[0] = op_code;
+    strncpy(buff + 1, client_pipe_path, path_size);
+    size_written = fwrite(buff, 1, sizeof(buff), fserv);
+    if (size_written != sizeof(buff)) {
         /* Error occured or nothing was written */
         return -1;
     }
@@ -79,7 +66,7 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     // printf("Cliente tfs mount: Vamos fechar o pipe do servidor\n");
     if (fclose(fserv) != 0) {
         return -1;
-    }
+    }   
 
     // // // // printf("Cliente tfs mount: Vamos tentar fazer mkfifo do pipe do cliente\n");
     // // // // if (mkfifo(client_pipe_path, 0777) < 0) {
@@ -119,8 +106,10 @@ int tfs_unmount() {
     /* TODO: Implement this */
     //TODO Concatenar tudo para mandar ao servidor
     //TODO usar uma função auxiliar para mandar a mensagem
+
     size_t size_written = 0;
     int operation_result;
+    char buf[5] = {'\0'};
 
     // printf("Cliente tfs unmount: Vamos começar a operação\n");
 
@@ -131,18 +120,11 @@ int tfs_unmount() {
 
     /* Write OP code to server's named pipe */
 
-    int op_code = TFS_OP_CODE_UNMOUNT;
-    // printf("Cliente tfs unmount: vamos escrever para o pipe o opcode\n");
-    size_written = fwrite(&op_code, sizeof(char), 1, fserv);
-    if (size_written < sizeof(char)) {
-        /* Failed to write OP code to server's named pipe */
-        return -1;
-    }
-
-    /* Write session id to pipe */
-    // printf("Cliente tfs unmount: Vamos escrever o session id para o pipe\n");
-    size_written = fwrite(&session_id, sizeof(int), 1, fserv);
-    if ((size_written * sizeof(int)) < sizeof(int)) {
+    char op_code = TFS_OP_CODE_UNMOUNT;
+    buf[0] = op_code;
+    memccpy(buf + 1, &session_id, sizeof(int), sizeof(int));
+    size_written = fwrite(&buf, 1, sizeof(buf), fserv);
+    if (size_written != sizeof(buf)) {
         /* Failed to write session id to server's named pipe */
         return -1;
     }
@@ -176,32 +158,18 @@ int tfs_open(char const *name, int flags) {
     size_t size_written; /* OP code, id, name and flags */
     // char OP_CODE[2], id[2], flag[2];
     int operation_result;
+    char buf[sizeof(char) + sizeof(int) + FILE_NAME_SIZE + sizeof(int)];
 
     if ((fserv = fopen(server_pipe, "w" )) == NULL) {
         return -1;
     }
 
     char opcode = TFS_OP_CODE_OPEN;
-    size_written = fwrite(&opcode, sizeof(char), 1, fserv);
-    // // // printf("Escrevemos %ld bytes e o opcode é %d\n", size_written, opcode);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-    size_written = fwrite(&session_id, sizeof(int), 1, fserv);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-    size_written = fwrite(name, sizeof(char), FILE_NAME_SIZE, fserv);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-    size_written = fwrite(&flags, sizeof(int), 1, fserv);
-    // if (size_written < size) {
-    //     return -1;
-    // }
+    buf[0] = opcode;
+    memccpy(buf + 1, &session_id, sizeof(int), sizeof(int));
+    memccpy(buf + 1 + sizeof(int), name, FILE_NAME_SIZE, FILE_NAME_SIZE);
+    memccpy(buf + 1 + sizeof(int) + FILE_NAME_SIZE, &flags, sizeof(int), sizeof(int));
+    size_written = fwrite(&buf, 1, sizeof(buf), fserv);
 
     // // // printf("Cliente tfs open: Já escrevemos tudo, vamos fechar o pipe do servidor\n");
     if (fclose(fserv) != 0) {
@@ -226,7 +194,7 @@ int tfs_close(int fhandle) {
 
     size_t size_written; /* OP code, id, name and flags */
     int operation_result;
-
+    char buf[sizeof(char) + sizeof(int) + sizeof(int)];
     // printf("Cliente tfs close: Vamos abrir o pipe do servidor em write\n");
     if ((fserv = fopen(server_pipe, "w" )) == NULL) {
         return -1;
@@ -234,23 +202,13 @@ int tfs_close(int fhandle) {
 
     // printf("Cliente tfs close: Vamos escrever o opcode\n");
     char opcode = TFS_OP_CODE_CLOSE;
-    size_written = fwrite(&opcode, sizeof(char), 1, fserv);
-    // // // printf("Escrevemos %ld bytes e o opcode é %d\n", size_written, opcode);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-    // printf("Cliente tfs close: Vamos escrever o session id\n");
-    size_written = fwrite(&session_id, sizeof(int), 1, fserv);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-    // printf("Cliente tfs close: Vamos escrever o file handle\n");
-    size_written = fwrite(&fhandle, sizeof(int), 1, fserv);
-    // if (size_written < size) {
-    //     return -1;
-    // }
+    buf[0] = opcode;
+    memccpy(buf + 1, &session_id, sizeof(int), sizeof(int));
+    memccpy(buf + 1 + sizeof(int), &fhandle, sizeof(int), sizeof(int));
+    size_written = fwrite(&buf, 1, sizeof(buf), fserv);
+    if (size_written != sizeof(buf)) {
+        return -1;
+    }
 
     // printf("Cliente tfs close: Vamos fechar o pipe do servidor\n");
     if (fclose(fserv) != 0) {
@@ -277,6 +235,7 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
 
     size_t size_written; /* OP code, id, name and flags */
     ssize_t operation_result;
+    char buf[sizeof(char) + sizeof(int) + sizeof(int) + sizeof(size_t) + len];
 
     // printf("Cliente tfs write: Vamos abrir o pipe do servidor em write\n");
     if ((fserv = fopen(server_pipe, "w" )) == NULL) {
@@ -285,37 +244,15 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
 
     // printf("Cliente tfs write: Vamos escrever o opcode\n");
     char opcode = TFS_OP_CODE_WRITE;
-    size_written = fwrite(&opcode, sizeof(char), 1, fserv);
-    // // // printf("Escrevemos %ld bytes e o opcode é %d\n", size_written, opcode);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-    // printf("Cliente tfs write: Vamos escrever o session id\n");
-    size_written = fwrite(&session_id, sizeof(int), 1, fserv);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-    // printf("Cliente tfs write: Vamos escrever o file handle\n");
-    size_written = fwrite(&fhandle, sizeof(int), 1, fserv);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-    // printf("Cliente tfs write: Vamos escrever o tamanho\n");
-    size_written = fwrite(&len, sizeof(size_t), 1, fserv);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-
-    // printf("Cliente tfs write: Vamos escrever o buffer\n");
-    size_written = fwrite(buffer, sizeof(char), len, fserv); //TODO maybe ver se é preciso '\0's até satisfazer o tamanho len
-    // if (size_written < size) {
-    //     return -1;
-    // }
-    // printf("Escrevemos %ld bytes\n\n\n", size_written);
+    buf[0] = opcode;
+    memccpy(buf + 1, &session_id, sizeof(int), sizeof(int));
+    memccpy(buf + 1 + sizeof(int), &fhandle, sizeof(int), sizeof(int));
+    memccpy(buf + 1 + sizeof(int) + sizeof(int), &len, sizeof(size_t), sizeof(size_t));
+    memccpy(buf + 1 + sizeof(int) + sizeof(int) + sizeof(size_t), buffer, len, len);
+    size_written = fwrite(&buf, 1, sizeof(buf), fserv);
+    if (size_written != sizeof(buf)) {
+        return -1;
+    }
 
     // printf("Cliente tfs write: Vamos fechar o pipe do servidor\n");
     if (fclose(fserv) != 0) {
@@ -337,7 +274,7 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
 
     size_t size_written;
     ssize_t operation_result;
-    char *temporary_buffer;
+    char buf[sizeof(char) + sizeof(int) + sizeof(int) + sizeof(size_t)];
 
     // printf("Cliente tfs read: Vamos abrir o pipe do servidor em write\n");
     if ((fserv = fopen(server_pipe, "w" )) == NULL) {
@@ -346,32 +283,14 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
 
     // printf("Cliente tfs read: Vamos escrever o opcode\n");
     char opcode = TFS_OP_CODE_READ;
-    size_written = fwrite(&opcode, sizeof(char), 1, fserv);
-    // // // printf("Escrevemos %ld bytes e o opcode é %d\n", size_written, opcode);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-    // printf("Cliente tfs read: Vamos escrever o session id\n");
-    size_written = fwrite(&session_id, sizeof(int), 1, fserv);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-    // printf("Cliente tfs read: Vamos escrever o file handle\n");
-    size_written = fwrite(&fhandle, sizeof(int), 1, fserv);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-    // printf("Cliente tfs read: Vamos escrever o tamanho\n");
-    size_written = fwrite(&len, sizeof(size_t), 1, fserv);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-
-
+    buf[0] = opcode;
+    memccpy(buf + 1, &session_id, sizeof(int), sizeof(int));
+    memccpy(buf + 1 + sizeof(int), &fhandle, sizeof(int), sizeof(int));
+    memccpy(buf + 1 + sizeof(int) + sizeof(int), &len, sizeof(size_t), sizeof(size_t));
+    size_written = fwrite(&buf, 1, sizeof(buf), fserv);
+    if (size_written != sizeof(buf)) {
+        return -1;
+    }
 
     // printf("Cliente tfs read: Vamos fechar o pipe do servidor\n");
     if (fclose(fserv) != 0) {
@@ -397,6 +316,7 @@ int tfs_shutdown_after_all_closed() {
 
     size_t size_written;
     int operation_result;
+    char buf[sizeof(char) + sizeof(int)];
 
     // printf("Cliente tfs shutdown: Vamos abrir o pipe do servidor em write\n");
     if ((fserv = fopen(server_pipe, "w" )) == NULL) {
@@ -405,17 +325,12 @@ int tfs_shutdown_after_all_closed() {
 
     // printf("Cliente tfs shutdown: Vamos escrever o opcode\n");
     char opcode = TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED;
-    size_written = fwrite(&opcode, sizeof(char), 1, fserv);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
-    // printf("Cliente tfs shutdown: Vamos escrever o session id\n");
-    size_written = fwrite(&session_id, sizeof(int), 1, fserv);
-    // if (size_written < size) {
-    //     return -1;
-    // }
-
+    buf[0] = opcode;
+    memccpy(buf + 1, &session_id, sizeof(int), sizeof(int));
+    size_written = fwrite(&buf, 1, sizeof(buf), fserv);
+    if (size_written != sizeof(buf)) {
+        return -1;
+    }
 
     // printf("Cliente tfs shutdown: Vamos fechar o pipe do servidor\n");
     if (fclose(fserv) != 0) {
