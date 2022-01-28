@@ -428,7 +428,7 @@ int main(int argc, char **argv) {
     // // int fcli[10];
 
     if (argc < 2) {
-        printf("Plea    se specify the pathname of the server's pipe.\n");
+        printf("Please specify the pathname of the server's pipe.\n");
         return 1;
     }
 
