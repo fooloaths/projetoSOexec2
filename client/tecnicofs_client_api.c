@@ -5,7 +5,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string.h>
-// // #include <unistd.h> // Not sure se este é preciso
+#include <unistd.h> // Not sure se este é preciso
 
 
 //TODO Pensar nas operações se o cliente já tivesse mounted/unmounted?
@@ -109,7 +109,7 @@ int tfs_unmount() {
 
     size_t size_written = 0;
     int operation_result;
-    char buf[5] = {'\0'};
+    char buf[sizeof(char) + sizeof(int)] = {'\0'};
 
     // printf("Cliente tfs unmount: Vamos começar a operação\n");
 
@@ -170,6 +170,10 @@ int tfs_open(char const *name, int flags) {
     memccpy(buf + 1 + sizeof(int), name, FILE_NAME_SIZE, FILE_NAME_SIZE);
     memccpy(buf + 1 + sizeof(int) + FILE_NAME_SIZE, &flags, sizeof(int), sizeof(int));
     size_written = fwrite(&buf, 1, sizeof(buf), fserv);
+    if (size_written != sizeof(buf)) {
+        /* Failed to write session id to server's named pipe */
+        return -1;
+    }
 
     // // // printf("Cliente tfs open: Já escrevemos tudo, vamos fechar o pipe do servidor\n");
     if (fclose(fserv) != 0) {
@@ -179,7 +183,10 @@ int tfs_open(char const *name, int flags) {
     // // // printf("Cliente tfs open: Vamos ler a resposta do servidor\n");
 
     /* Read answer */
-    fread(&operation_result, sizeof(int), 1, fcli);
+    if (fread(&operation_result, 1, sizeof(int), fcli) != sizeof(int)) {
+        /* Failed to read operation result from client's named pipe */
+        return -1;
+    }
         //Falta o check for error da syscall/se leu o suficiente
 
     // // // printf("Cliente tfs_open: O resultado foi %d\n", operation_result);
@@ -218,7 +225,9 @@ int tfs_close(int fhandle) {
 
     // printf("Cliente tfs close: Vamos ler o resultado\n");
     /* Read answer */
-    fread(&operation_result, sizeof(int), 1, fcli);
+    if (fread(&operation_result, 1, sizeof(int), fcli) != sizeof(int)) {
+        return -1;
+    }
         //Falta o check for error da syscall/se leu o suficiente
 
     // // // printf("Cliente tfs_open: O resultado foi %d\n", operation_result);
@@ -261,9 +270,9 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
 
     // printf("Cliente tfs write: Vamos ler o resultado\n");
     /* Read answer */
-    fread(&operation_result, sizeof(ssize_t), 1, fcli);
-
-
+    if (fread(&operation_result, 1, sizeof(size_t), fcli) != sizeof(size_t)) {
+        return -1;
+    }
     // printf("Cliente tfs write: Operação terminada\n");
 
     return operation_result;
@@ -299,7 +308,9 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
 
     // printf("Cliente tfs read: Vamos ler o resultado\n");
     /* Read answer */
-    fread(&operation_result, sizeof(ssize_t), 1, fcli);
+    if (fread(&operation_result, 1, sizeof(ssize_t), fcli) != sizeof(ssize_t)) {
+        return -1;
+    }
 
     if (operation_result != -1) {
         /* if something was read */
@@ -312,8 +323,6 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
 }
 
 int tfs_shutdown_after_all_closed() {
-    // printf("Cliente tfs shutdown: Iniciar operação\n");
-
     size_t size_written;
     int operation_result;
     char buf[sizeof(char) + sizeof(int)];
@@ -339,7 +348,9 @@ int tfs_shutdown_after_all_closed() {
 
     // printf("Cliente tfs shutdown: Vamos ler o resultado\n");
     /* Read answer */
-    fread(&operation_result, sizeof(int), 1, fcli);
+    if (fread(&operation_result, 1, sizeof(int), fcli) != sizeof(int)) {
+        return -1;
+    }
 
 
     return operation_result;

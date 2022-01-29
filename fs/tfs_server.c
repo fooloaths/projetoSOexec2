@@ -264,8 +264,8 @@ ssize_t treat_request_read(int id, int fhandle, size_t len) {
 
 
 
-    size_written = fwrite(&operation_result, sizeof(ssize_t), 1, fcli);
-    if ((size_written * sizeof(ssize_t)) < sizeof(ssize_t)) {
+    size_written = fwrite(&operation_result, 1, sizeof(ssize_t), fcli);
+    if ((size_written != sizeof(ssize_t))) {
         return -1;
     }
 
@@ -320,7 +320,6 @@ int treat_request(char buff, FILE *fserv) {
     char op_code = buff;
     int session_id = -1;
     size_t len;
-    char pipe_path[PIPE_PATH_SIZE]; 
     char path[PIPE_PATH_SIZE];
 
     // printf("O op_code é %d\n", op_code);
@@ -328,7 +327,9 @@ int treat_request(char buff, FILE *fserv) {
     // printf("Servidor treat_request: o opcode é %d\n", op_code);
     if (op_code == TFS_OP_CODE_MOUNT) {
         /* Skip op code */
-        fread(path, sizeof(char), sizeof(path), fserv);
+        if (fread(path, sizeof(char), sizeof(path), fserv) != sizeof(path)) {
+            return -1;
+        }
         // printf("buff: %s\n", path);
         // printf("O buffer na sua inteiridade é %s\n", path);
         // printf("Servidor treat_request: Queremos fazer mount, por isso vamos copiar o client pipe path do buffer\n");
@@ -341,7 +342,9 @@ int treat_request(char buff, FILE *fserv) {
     }
     else if (op_code == TFS_OP_CODE_UNMOUNT ) {
         // printf("Servidor treat request: VAMOS TRATAR DE UM UNMOUNT\n");
-        fread(&session_id, sizeof(int), 1, fserv);
+        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
+            return -1;
+        }
 
         if (!valid_id(session_id) || tfs_unmount(session_id) == -1) {
             printf("Servidor treat request (unmount): O pedido falhou\n");
@@ -352,11 +355,17 @@ int treat_request(char buff, FILE *fserv) {
         // printf("Servidor treat request: Vamos tratar de um open\n");
         char name[FILE_NAME_SIZE];
         int flags;
-        fread(&session_id, sizeof(int), 1, fserv);
+        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
+            return -1;
+        }
         // printf("Leu o session id que é = a %d\n", session_id);
-        fread(name, sizeof(char), FILE_NAME_SIZE, fserv);
+        if (fread(name, sizeof(char), FILE_NAME_SIZE, fserv) != FILE_NAME_SIZE) {
+            return -1;
+        }
         // printf("Leu o nome do ficheiro que é %s\n", name);
-        fread(&flags, sizeof(int), 1, fserv);
+        if (fread(&flags, 1, sizeof(int), fserv) != sizeof(int)) {
+            return -1;
+        }
         // printf("Conseguiu ler tudo\n");
 
         if (!valid_id(session_id) || treat_open_request(session_id, name, flags) == -1) {
@@ -367,8 +376,12 @@ int treat_request(char buff, FILE *fserv) {
     else if (op_code == TFS_OP_CODE_CLOSE) {
         // printf("Servidor treat request: Vamos tratar de um close\n");
         int fhandle;
-        fread(&session_id, sizeof(int), 1, fserv);
-        fread(&fhandle, sizeof(int), 1, fserv);
+        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
+            return -1;
+        }
+        if (fread(&fhandle, 1, sizeof(int), fserv) != sizeof(int)) {
+            return -1;
+        }
 
         if (!valid_id(session_id) || treat_close_request(session_id, fhandle) == -1) {
             printf("Servidor treat request (close): O pedido falhou\n");
@@ -378,12 +391,19 @@ int treat_request(char buff, FILE *fserv) {
     else if (op_code == TFS_OP_CODE_WRITE) {
         // printf("Servidor treat request: Vamos tratar de um write\n");
         int fhandle;
-        fread(&session_id, sizeof(int), 1, fserv);
-        fread(&fhandle, sizeof(int), 1, fserv);
-        fread(&len, sizeof(size_t), 1, fserv);
+        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
+            return -1;
+        }
+        if (fread(&fhandle, 1, sizeof(int), fserv) != sizeof(int)) {
+            return -1;
+        }
+        if (fread(&len, 1, sizeof(size_t), fserv) != sizeof(size_t)) {
+            return -1;
+        }
         char buffer[len];
-
-        fread(&buffer, sizeof(char), sizeof(buffer), fserv);
+        if (fread(&buffer, sizeof(char), sizeof(buffer), fserv) != sizeof(buffer)) {
+            return -1;
+        }
 
         if (!valid_id(session_id) || treat_write_request(session_id, fhandle, len, buffer) == -1) {
             printf("Servidor treat request (write): O pedido falhou\n");
@@ -393,9 +413,15 @@ int treat_request(char buff, FILE *fserv) {
     else if (op_code == TFS_OP_CODE_READ) {
         // printf("Servidor treat request: Vamos tratar de um read\n");
         int fhandle;
-        fread(&session_id, sizeof(int), 1, fserv);
-        fread(&fhandle, sizeof(int), 1, fserv);
-        fread(&len, sizeof(size_t), 1, fserv);
+        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
+            return -1;
+        }
+        if (fread(&fhandle, 1, sizeof(int), fserv) != sizeof(int)) {
+            return -1;
+        }
+        if (fread(&len, 1, sizeof(size_t), fserv) != sizeof(size_t)) {
+            return -1;
+        }
 
         if (!valid_id(session_id) || treat_request_read(session_id, fhandle, len) == -1) {
             return -1;
@@ -403,7 +429,9 @@ int treat_request(char buff, FILE *fserv) {
     }
     else if (op_code == TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED) {
         // printf("Servidor treat request: Vamos tratar de um shutdown\n");
-        fread(&session_id, sizeof(int), 1, fserv);
+        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
+            return -1;
+        }
 
         if (!valid_id(session_id) || treat_request_shutdown(session_id) == -1) {
             return -1;
