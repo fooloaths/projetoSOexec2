@@ -270,7 +270,8 @@ ssize_t treat_request_read(int id, int fhandle, size_t len) {
     }
 
     if (operation_result != -1) {
-        size_written = fwrite(buff, sizeof(char), operation_result, fcli);
+        // safe cast because operation_result is known to be positive
+        size_written = fwrite(buff, sizeof(char), (size_t) operation_result, fcli);
     
         if ((size_written * sizeof(ssize_t)) < sizeof(ssize_t)) {
             return -1;
@@ -284,6 +285,7 @@ ssize_t treat_request_read(int id, int fhandle, size_t len) {
     // printf("\n\n O número de bytes lidos foi %ld\n\n", operation_result);
     // printf("Servidor tfs read: Operação terminada\n");
 
+    free(buff);
     return operation_result;
 }
 
