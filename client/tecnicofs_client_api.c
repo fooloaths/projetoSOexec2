@@ -20,6 +20,7 @@ static char const *pipe_path = NULL;
 static char const *server_pipe = NULL;
 static FILE *fserv, *fcli;
 
+
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     int id;
     size_t size_written = 0;
@@ -43,7 +44,9 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
 
     /* Write to the server's named pipe the path to the client side of the
      * pipe */
+
     char op_code = TFS_OP_CODE_MOUNT;
+
     buff[0] = op_code;
     strncpy(buff + 1, client_pipe_path, PIPE_PATH_SIZE - 1);
     size_written = fwrite(buff, 1, sizeof(buff), fserv);
@@ -156,8 +159,6 @@ int tfs_open(char const *name, int flags) {
         /* Failed to read operation result from client's named pipe */
         return -1;
     }
-        //Falta o check for error da syscall/se leu o suficiente
-
 
     return operation_result;
 }

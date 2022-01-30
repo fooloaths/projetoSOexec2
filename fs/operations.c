@@ -86,7 +86,6 @@ int tfs_destroy_after_all_closed() {
     }
 
 
-    /* TO DO: implement this */
     return 0;
 }
 
