@@ -491,6 +491,8 @@ int treat_request() {
         pthread_create(&client_threads[id], NULL, tfs_mount,(void*) message);
 
         //TODO acho que falta dar join aqui
+        
+        increment_cons_ptr();
 
         return 0;
     }
