@@ -12,7 +12,7 @@
 //TODO: Redifine in config.h
 //TODO: Verificar se estamos sempre a devolver erro ao cliente (escrevendo no pipe) --> Talvez criar função para isso
 //TODO: Perguntar ao prof se é para fechar (do lado do servidor) o pipe do cliente sempre que termina uma operação ou se é só no unmount
-#define S 64 /* confirmar isto com os profs. É suposto ser o nº de possíveis sessões ativas */
+#define S 1 /* confirmar isto com os profs. É suposto ser o nº de possíveis sessões ativas */
 #define FREE 1
 #define TAKEN 0
 
@@ -57,8 +57,11 @@ int server_init() {
         }
 
         prod_cons_buffer[i][0].op_code = -1;
-
-        pthread_create(&threads[i], NULL, tfs_server_thread, (void *) i);
+        size_t *i_pointer = malloc(sizeof(*i_pointer));
+        *i_pointer = i;
+        if (pthread_create(&threads[i], NULL, tfs_server_thread, (void*)i_pointer) != 0) {
+            return -1;
+        }
 
         for (size_t j = 0; j < PIPE_PATH_SIZE; j++) {
             client_pipes[i][j] = '\0';
@@ -256,6 +259,8 @@ int treat_request(char buff, FILE *fserv) {
     size_t len = 0;
     char path[PIPE_PATH_SIZE];
 
+    printf("entrou\n");
+
     if (op_code == TFS_OP_CODE_MOUNT) {
         if (fread(path, sizeof(char), sizeof(path), fserv) != sizeof(path)) {
             return -1;
@@ -277,12 +282,18 @@ int treat_request(char buff, FILE *fserv) {
             }
             return 0;
         }
+        printf("entrou em mutex\n");
         pthread_mutex_lock(&client_mutexes[session_id]);
         message = &(prod_cons_buffer[session_id][0]);
         message->op_code = op_code;
         message->session_id = session_id;
+
+        // pthread_mutex_unlock(&client_mutexes[session_id]);
+        printf("%d\n", session_id);
+        pthread_cond_signal(&client_cond_var[session_id]);
         pthread_mutex_unlock(&client_mutexes[session_id]);
 
+        printf("saiu de mutex\n");
         return 0;
     }
     else {
@@ -297,10 +308,12 @@ int treat_request(char buff, FILE *fserv) {
         }
     }
     
+    printf("mutex 2\n");
     pthread_mutex_lock(&client_mutexes[session_id]);
     message = &(prod_cons_buffer[session_id][0]);
     message->op_code = op_code;
     message->session_id = session_id;
+    printf("mutex 3 swag\n");
     
     if (op_code == TFS_OP_CODE_UNMOUNT ) {
         /*
@@ -383,6 +396,9 @@ int treat_request(char buff, FILE *fserv) {
         return -1;
     }
     pthread_mutex_unlock(&client_mutexes[session_id]);
+    pthread_cond_signal(&client_cond_var[session_id]);
+
+    printf("saiu\n");
 
     return 0;
 }
@@ -392,7 +408,12 @@ int treat_request_thread(int id) {
     int op_code = req->op_code;
     int session_id = id;
 
+    printf("aaaa\n");
     //MOUNT and UNMOUNT are treated in the main thread
+    if (op_code == TFS_OP_CODE_MOUNT) {
+        printf("chico\n");
+    }
+
     if (op_code == TFS_OP_CODE_OPEN) {
         char *name = req->buffer;
         int flags = req->flags;
@@ -452,18 +473,22 @@ void* tfs_server_thread(void* args) {
     int id = *((int *) args);
     struct request message = prod_cons_buffer[id][0];
 
+    printf("op code = %d\n", message.op_code);
     while (1) {
-        
+        if (pthread_mutex_lock(&client_mutexes[id]) != -1) {
+            return NULL;
+        }
+        printf("aaaa\n");
         while (message.op_code == -1) {
+            printf("olá\n");
             // printf("tfs thread trabalhadora: Vai dormir\n", id);
-            
             if (pthread_cond_wait(&client_cond_var[id], &client_mutexes[id]) != 0) {
                 //TODO pensar como tratar do erro
+                printf("morreu\n");
                 pthread_exit(NULL);
             }
         }
-
-        pthread_mutex_lock(&client_mutexes[id]);
+        printf("acordou\n");
         if (treat_request_thread(id) == -1) {
             message.op_code = -1;
             //TODO oq fazer se a thread for morta aqui e o servidor continuar a mandar pedidos???
@@ -478,7 +503,7 @@ void* tfs_server_thread(void* args) {
             pthread_exit(NULL);
         }
         message.op_code = -1;
-        pthread_mutex_lock(&client_mutexes[id]);
+        pthread_mutex_unlock(&client_mutexes[id]);
     }
 }
 
