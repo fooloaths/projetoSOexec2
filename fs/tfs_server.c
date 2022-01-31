@@ -586,6 +586,7 @@ int main(int argc, char **argv) {
         }
 
         if (treat_request(buff, fserv) == -1) {
+            fclose(fserv);
             return -1;
         }
     }
