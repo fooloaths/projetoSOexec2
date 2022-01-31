@@ -24,6 +24,7 @@ struct session { /* Não sei se é isto que temos de fazer */
 
 struct request {
     char op_code;
+    int session_id;
     int flags;
     char buffer[FILE_NAME_SIZE];
     char *dynamic_buffer;
@@ -35,14 +36,27 @@ static int session_ids[S];
 static char client_pipes[S][PIPE_PATH_SIZE];
 static pthread_t threads[S];
 //i think this line is useless?
-static pthread_mutex_t mutexes[S];
+static pthread_mutex_t client_mutexes[S];
+static pthread_cond_t client_cond_var[S];
 
-static struct request *buffer[S][1] = {NULL};
+static struct request prod_cons_buffer[S][1];
 
-void server_init() {
+void* tfs_server_thread(void *);
+
+int server_init() {
     tfs_init();
     for (size_t i = 0; i < S; i++) {
         session_ids[i] = FREE;
+
+        if (pthread_mutex_init(&client_mutexes[i], NULL) != 0) {
+            return -1;
+        }
+
+        if (pthread_cond_init(&client_cond_var[i], NULL) != 0) {
+            return -1;
+        }
+
+        prod_cons_buffer[i][0].op_code = -1;
 
         pthread_create(&threads[i], NULL, tfs_server_thread, (void *) i);
 
@@ -51,9 +65,11 @@ void server_init() {
         }
     }
 
+    return 0;
 }
 
 int get_free_session_id() {
+    //TODO temos de meter mutex aqui
     for (int i = 0; i < S; i++) {
         if (session_ids[i] == FREE) {
             return i;
@@ -73,6 +89,7 @@ int session_id_is_free(int id) {
 //TODO alter this to also close thread and mutex if they are not NULL
 //TODO alter this so set the buffer[id] to NULL
 void terminate_session(int id) {
+    //TODO temos de meter mutex aqui
     session_ids[id] = FREE;
 
     for (size_t i = 0; i < PIPE_PATH_SIZE; i++) {
@@ -81,6 +98,16 @@ void terminate_session(int id) {
         }
         client_pipes[id][i] = '\0';
     }
+}
+
+int send_reply(const void *restrict ptr, FILE *fcli, size_t size) {
+    size_t bytes_written;
+
+    bytes_written = fwrite(ptr, size, 1, fcli);
+    if ((bytes_written * size) < size) {
+        return -1;
+    }
+    return 0;
 }
 
 int treat_open_request(int id, char *name, int flags) {
@@ -223,147 +250,145 @@ int treat_request_shutdown(int id) {
 }
 
 int treat_request(char buff, FILE *fserv) {
+    struct request *message;
     char op_code = buff;
     int session_id = -1;
-    size_t len;
+    size_t len = 0;
     char path[PIPE_PATH_SIZE];
 
-    // doesnt make sense for mount and unmount to be "parallelized"
     if (op_code == TFS_OP_CODE_MOUNT) {
-        /* Skip op code */
         if (fread(path, sizeof(char), sizeof(path), fserv) != sizeof(path)) {
             return -1;
         }
-        if (tfs_mount(path) == -1) {
-            return -1;
-        }
-    }
-    else if (op_code == TFS_OP_CODE_UNMOUNT ) {
-        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
-            return -1;
-        }
+        /* Assign operation to a worker thread */
+        session_id = get_free_session_id();
+        FILE* fcli;
 
-        if (!valid_id(session_id) || tfs_unmount(session_id) == -1) {
-            return -1;
+        if (session_id == -1) {
+            /* Treat possible errors */
+            if ((fcli = fopen(path, "w")) == NULL) {
+                return -1;
+            }
+            if (send_reply(&session_id, fcli, sizeof(int)) == -1) {
+                if ((fclose(fcli)) != 0) {
+                    return -1;
+                }
+                return -1;
+            }
+            return 0;
         }
-    }
+        pthread_mutex_lock(&client_mutexes[session_id]);
+        message = &(prod_cons_buffer[session_id][0]);
+        message->op_code = op_code;
+        message->session_id = session_id;
+        pthread_mutex_unlock(&client_mutexes[session_id]);
 
-
-    else if (op_code == TFS_OP_CODE_OPEN) {
-        struct request *req = (struct request *) malloc(sizeof(struct request));
-        if (req == NULL) {
-            return -1;
-        }
-        req->op_code = op_code;
-        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
-            free(req);
-            return -1;
-        }
-        if (fread(req->buffer, sizeof(char), FILE_NAME_SIZE, fserv) != FILE_NAME_SIZE) {
-            free(req);
-            return -1;
-        }
-        if (fread(req->flags, 1, sizeof(int), fserv) != sizeof(int)) {
-            free(req);
-            return -1;
-        }
-        if (!valid_id(session_id)) {
-            free(req);
-            return -1;
-        }
-        buffer[session_id][0] = req;
-    }
-    else if (op_code == TFS_OP_CODE_CLOSE) {
-        struct request *req = (struct request *) malloc(sizeof(struct request));
-        if (req == NULL) {
-            return -1;
-        }
-        req->op_code = op_code;
-        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
-            free(req);
-            return -1;
-        }
-        if (fread(req->fhandle, 1, sizeof(int), fserv) != sizeof(int)) {
-            free(req);
-            return -1;
-        }
-        if !valid_id(session_id) {
-            free(req);
-            return -1;
-        }
-        buffer[session_id][0] = req;
-    }
-    else if (op_code == TFS_OP_CODE_WRITE) {
-        struct request *req = (struct request *) malloc(sizeof(struct request));
-        if (req == NULL) {
-            return -1;
-        }
-        req->op_code = op_code;
-        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
-            free(req);
-            return -1;
-        }
-        if (fread(req->fhandle, 1, sizeof(int), fserv) != sizeof(int)) {
-            free(req);
-            return -1;
-        }
-        if (fread(req->len, 1, sizeof(size_t), fserv) != sizeof(size_t)) {
-            free(req);
-            return -1;
-        }
-        char buffer[len];
-        if (fread(req->buffer, sizeof(char), sizeof(buffer), fserv) != sizeof(buffer)) {
-            free(req);
-            return -1;
-        }
-        if !valid_id(session_id) {
-            free(req);
-            return -1;
-        }
-        buffer[session_id][0] = req;
-    }
-    else if (op_code == TFS_OP_CODE_READ) {
-        struct request *req = (struct request *) malloc(sizeof(struct request));
-        if (req == NULL) {
-            return -1;
-        }
-        req->op_code = op_code;
-        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
-            free(req);
-            return -1;
-        }
-        if (fread(req->fhandle, 1, sizeof(int), fserv) != sizeof(int)) {
-            free(req);
-            return -1;
-        }
-        if (fread(req->len, 1, sizeof(size_t), fserv) != sizeof(size_t)) {
-            free(req);
-            return -1;
-        }
-        if !valid_id(session_id) {
-            free(req);
-            return -1;
-        }
-        buffer[session_id][0] = req;
-    }
-    else if (op_code == TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED) {
-        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
-            return -1;
-        }
-
-        if (!valid_id(session_id) || treat_request_shutdown(session_id) == -1) {
-            return -1;
-        }
+        return 0;
     }
     else {
+        /* Operation requires knowing client's id */
+        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
+            return -1;
+        }
+
+        /* ID provided is not valid to perform any operation */
+        if (!valid_id(session_id) || session_id_is_free(session_id)) {
+            return 0;
+        }
+    }
+    
+    pthread_mutex_lock(&client_mutexes[session_id]);
+    message = &(prod_cons_buffer[session_id][0]);
+    message->op_code = op_code;
+    message->session_id = session_id;
+    
+    if (op_code == TFS_OP_CODE_UNMOUNT ) {
+        /*
+         * Por agora não faz nada, deixo só aqui por enquanto para ficar legível o que está a acontecer
+         *
+         */
+    }
+    else if (op_code == TFS_OP_CODE_OPEN) {
+
+        if (fread(message->buffer, sizeof(char), FILE_NAME_SIZE, fserv) != FILE_NAME_SIZE) {
+            message->op_code = -1;
+            pthread_mutex_unlock(&client_mutexes[session_id]);
+            return -1;
+        }
+        if (fread(&(message->flags), 1, sizeof(int), fserv) != sizeof(int)) {
+            message->op_code = -1;
+            pthread_mutex_unlock(&client_mutexes[session_id]);
+            return -1;
+        }
+
+    }
+    else if (op_code == TFS_OP_CODE_CLOSE) {
+
+        if (fread(&(message->fhandle), 1, sizeof(int), fserv) != sizeof(int)) {
+            message->op_code = -1;
+            pthread_mutex_unlock(&client_mutexes[session_id]);
+            return -1;
+        }
+
+    }
+    else if (op_code == TFS_OP_CODE_WRITE) {
+
+        if (fread(&(message->fhandle), 1, sizeof(int), fserv) != sizeof(int)) {
+            message->op_code = -1;
+            pthread_mutex_unlock(&client_mutexes[session_id]);
+            return -1;
+        }
+        if (fread(&(message->len), 1, sizeof(size_t), fserv) != sizeof(size_t)) {
+            message->op_code = -1;
+            pthread_mutex_unlock(&client_mutexes[session_id]);
+            return -1;
+        }
+
+        message->dynamic_buffer = (char *) malloc(sizeof(char) * len);
+        if (message->dynamic_buffer == NULL) {
+            message->op_code = -1;
+            pthread_mutex_unlock(&client_mutexes[session_id]);
+            return -1;
+        }
+        if (fread(message->dynamic_buffer, sizeof(char), len, fserv) != (sizeof(char) * len)) {
+            message->op_code = -1;
+            free(message->dynamic_buffer);
+            pthread_mutex_unlock(&client_mutexes[session_id]);
+            return -1;
+        }
+    }
+    else if (op_code == TFS_OP_CODE_READ) {
+
+        if (fread(&(message->fhandle), 1, sizeof(int), fserv) != sizeof(int)) {
+            message->op_code = -1;
+            pthread_mutex_unlock(&client_mutexes[session_id]);
+            return -1;
+        }
+        if (fread(&(message->len), 1, sizeof(size_t), fserv) != sizeof(size_t)) {
+            message->op_code = -1;
+            pthread_mutex_unlock(&client_mutexes[session_id]);
+            return -1;
+        }
+
+    }
+    else if (op_code == TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED) {
+        /*
+         * Por agora não faz nada, deixo só aqui por enquanto para ficar legível o que está a acontecer
+         *
+         */
+    }
+    else {
+        message->op_code = -1;
+        pthread_mutex_unlock(&client_mutexes[session_id]);
         return -1;
     }
+    pthread_mutex_unlock(&client_mutexes[session_id]);
 
     return 0;
 }
 
 int treat_request_thread(int id) {
-    struct request *req = buffer[id][0];
+    struct request *req = &(prod_cons_buffer[id][0]);
     int op_code = req->op_code;
     int session_id = id;
 
@@ -372,47 +397,38 @@ int treat_request_thread(int id) {
         char *name = req->buffer;
         int flags = req->flags;
         if (treat_open_request(session_id, name, flags) == -1) {
-            free(req);
-            req = NULL;
+            req->op_code = -1;
             return -1;
         }
-        free(req);
-        req = NULL;
+        req->op_code = -1;
     }
     else if (op_code == TFS_OP_CODE_CLOSE) {
         int fhandle = req->fhandle;
-        treat_close_request(session_id, fhandle) == -1) {
-            free(req);
-            req = NULL;
+        if (treat_close_request(session_id, fhandle) == -1) {
+            req->op_code = -1;
             return -1;
         }
-        free(req);
-        req = NULL;
+        req->op_code = -1;
     }
     else if (op_code == TFS_OP_CODE_WRITE) {
         int fhandle = req->fhandle;
         size_t len = req->len;
         char buffer[len];
         memcpy(buffer, req->buffer, len);
-        treat_write_request(session_id, fhandle, len, buffer) == -1) {
-            free(req);
-            req = NULL;
+        if (treat_write_request(session_id, fhandle, len, buffer) == -1) {
+            req->op_code = -1;
             return -1;
         }
-        free(req);
-        req = NULL;
+        req->op_code = -1;
     }
     else if (op_code == TFS_OP_CODE_READ) {
         int fhandle = req->fhandle;
         size_t len = req->len;
-        treat_request_read(session_id, fhandle, len) == -1) {
-            free(req);
-            req = NULL;
+        if (treat_request_read(session_id, fhandle, len) == -1) {
+            req->op_code = -1;
             return -1;
         }
-        free(req);
-        req = NULL;
-
+        req->op_code = -1;
     }
     //ver se faz sentido ter isto aqui
     // // else if (op_code == TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED) {
@@ -425,6 +441,7 @@ int treat_request_thread(int id) {
     // //     }
     // // }
     else {
+        req->op_code = -1;
         return -1;
     }
 
@@ -433,13 +450,38 @@ int treat_request_thread(int id) {
 
 void* tfs_server_thread(void* args) {
     int id = *((int *) args);
-    while (buffer[id][0] != NULL) {
-        printf("HELLO MR I AM WORKING BZZT BZZT MY ID IS %d\n", id);
+    struct request message = prod_cons_buffer[id][0];
+
+    while (1) {
+        
+        while (message.op_code == -1) {
+            // printf("tfs thread trabalhadora: Vai dormir\n", id);
+            
+            if (pthread_cond_wait(&client_cond_var[id], &client_mutexes[id]) != 0) {
+                //TODO pensar como tratar do erro
+                pthread_exit(NULL);
+            }
+        }
+
+        pthread_mutex_lock(&client_mutexes[id]);
         if (treat_request_thread(id) == -1) {
+            message.op_code = -1;
+            //TODO oq fazer se a thread for morta aqui e o servidor continuar a mandar pedidos???
+            pthread_mutex_unlock(&client_mutexes[id]);
+
+            /*
+             * Vejo duas hipotesses aqui:
+             *  a) Para além de FREE e TAKEN, acrescentamos BROKEN e matamos esta thread
+             *  b) Voltamos a meter id = FREE e não matamos a thread
+             */ 
+
             pthread_exit(NULL);
         }
+        message.op_code = -1;
+        pthread_mutex_lock(&client_mutexes[id]);
     }
 }
+
 
 int tfs_mount(char *path) {
     int id;
@@ -516,7 +558,9 @@ int main(int argc, char **argv) {
 
     unlink(pipename); //Não sei se isto fica aqui
 
-    server_init();
+    if (server_init() == -1) {
+        return -1;
+    }
 
     /* Create server's named pipe */
     if (mkfifo(pipename, 0640) < 0) {
