@@ -16,6 +16,7 @@
 #define FREE 1
 #define TAKEN 0
 
+//?? is this used?
 struct session { /* Não sei se é isto que temos de fazer */
     char const *pipe;
     size_t session_id;
@@ -35,12 +36,15 @@ static char client_pipes[S][PIPE_PATH_SIZE];
 static pthread_t threads[S];
 //i think this line is useless?
 static pthread_mutex_t mutexes[S];
+
 static struct request *buffer[S][1] = {NULL};
 
 void server_init() {
     tfs_init();
     for (size_t i = 0; i < S; i++) {
         session_ids[i] = FREE;
+
+        pthread_create(&threads[i], NULL, tfs_server_thread, (void *) i);
 
         for (size_t j = 0; j < PIPE_PATH_SIZE; j++) {
             client_pipes[i][j] = '\0';
@@ -78,6 +82,7 @@ void terminate_session(int id) {
         client_pipes[id][i] = '\0';
     }
 }
+
 int treat_open_request(int id, char *name, int flags) {
     FILE *fcli;
     int operation_result;
@@ -274,7 +279,7 @@ int treat_request(char buff, FILE *fserv) {
             return -1;
         }
         req->op_code = op_code;
-        if (fread(req->session_id, 1, sizeof(int), fserv) != sizeof(int)) {
+        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
             free(req);
             return -1;
         }
@@ -294,7 +299,7 @@ int treat_request(char buff, FILE *fserv) {
             return -1;
         }
         req->op_code = op_code;
-        if (fread(req->session_id, 1, sizeof(int), fserv) != sizeof(int)) {
+        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
             free(req);
             return -1;
         }
@@ -311,7 +316,7 @@ int treat_request(char buff, FILE *fserv) {
             free(req);
             return -1;
         }
-        if (!valid_id(session_id) {
+        if !valid_id(session_id) {
             free(req);
             return -1;
         }
@@ -323,7 +328,7 @@ int treat_request(char buff, FILE *fserv) {
             return -1;
         }
         req->op_code = op_code;
-        if (fread(req->session_id, 1, sizeof(int), fserv) != sizeof(int)) {
+        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
             free(req);
             return -1;
         }
@@ -431,12 +436,11 @@ void* tfs_server_thread(void* args) {
     while (buffer[id][0] != NULL) {
         printf("HELLO MR I AM WORKING BZZT BZZT MY ID IS %d\n", id);
         if (treat_request_thread(id) == -1) {
-            return NULL;
+            pthread_exit(NULL);
         }
     }
 }
 
-//alter to create a thread
 int tfs_mount(char *path) {
     int id;
     size_t  bytes_written = 0;
@@ -453,10 +457,8 @@ int tfs_mount(char *path) {
     /* update session id and path */
     session_ids[id] = TAKEN;
     strcpy(client_pipes[id], path);
-    pthread_create(&threads[id], NULL, tfs_server_thread, (void *) id);
-
     bytes_written = fwrite(&id, 1, sizeof(int), fcli);
-    if ((bytes_written != sizeof(int)) {
+    if ((bytes_written != sizeof(int))) {
         return -1;
     }
 
