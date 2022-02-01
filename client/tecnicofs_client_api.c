@@ -49,6 +49,7 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
 
     buff[0] = op_code;
     strncpy(buff + 1, client_pipe_path, PIPE_PATH_SIZE - 1);
+    printf("Enviou pedido\n");
     size_written = fwrite(buff, 1, sizeof(buff), fserv);
     if (size_written != sizeof(buff)) {
         /* Error occured or nothing was written */
@@ -60,11 +61,13 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     }   
 
 
+    printf("Vai ler pedido\n");
     /* Read from client's named pipe the assigned session id */
     if (fread(&id, 1, sizeof(int), fcli) != sizeof(int)) {
         /* Error occured or nothing was read */
         return -1;
     }
+    printf("Já leu\n");
 
     if (id == -1) {
         /* Failed to mount to tfs server */
