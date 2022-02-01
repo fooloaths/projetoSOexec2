@@ -12,7 +12,7 @@
 //TODO: Redifine in config.h
 //TODO: Verificar se estamos sempre a devolver erro ao cliente (escrevendo no pipe) --> Talvez criar função para isso
 //TODO: Perguntar ao prof se é para fechar (do lado do servidor) o pipe do cliente sempre que termina uma operação ou se é só no unmount
-#define S 1 /* confirmar isto com os profs. É suposto ser o nº de possíveis sessões ativas */
+#define S 20 /* confirmar isto com os profs. É suposto ser o nº de possíveis sessões ativas */
 #define FREE 1
 #define TAKEN 0
 
@@ -211,8 +211,14 @@ ssize_t treat_write_request(int id, int fhandle, size_t len, char *buff) {
     if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
         return -1;
     }
+    printf("LALALALALA queremos escrever %ld\n", len);
+    printf("O BUFFER QUE VAMOS ESCREVER é %s\n\n\n", buff);
+    printf("buff[1] = %c\n", buff[1]);
+    printf("Buff[2] = %c\n", buff[2]);
+    printf("Buff[3] = %c\n", buff[3]);
     operation_result = tfs_write(fhandle, buff, len);
-
+    printf("OIOIOIOIOI oq escrevemos na verdade foi %ld\n", operation_result);
+        
     if (send_reply(&operation_result, fcli, sizeof(ssize_t)) == -1) {
         if (fclose(fcli) != 0) {
             return -1;
@@ -245,7 +251,6 @@ ssize_t treat_request_read(int id, int fhandle, size_t len) {
     }
 
     operation_result = tfs_read(fhandle, buff, len);
-
     if (send_reply(&operation_result, fcli, sizeof(ssize_t)) == -1) {
         free(buff);
         if (fclose(fcli) != 0) {
@@ -314,7 +319,7 @@ int tfs_mount(char *path) {
 
     /* Assign operation to a worker thread */
     id = get_free_session_id();
-
+    printf("ID da sessão: %d\n", id);
     if (id != -1) {
         /* Update session info */
         session_ids[id] = TAKEN;
@@ -322,6 +327,7 @@ int tfs_mount(char *path) {
     }
 
     if (send_reply(&id, fcli, sizeof(int)) == -1) {
+        printf("Erro ao enviar o id\n");
         if ((fclose(fcli)) != 0) {
             return -1;
         }
@@ -329,6 +335,7 @@ int tfs_mount(char *path) {
     }
 
     if (fclose(fcli) != 0) {
+        printf("Erro ao fechar o fcli\n");
         /* Failed to close file */
         return -1;
     }
@@ -369,9 +376,12 @@ int tfs_unmount(int id) {
 int treat_request(char buff, FILE *fserv) {
     struct request *message;
     char op_code = buff;
-    int session_id = -1;
+    int session_id = 0;
     size_t len = 0;
     char path[PIPE_PATH_SIZE];
+    size_t bytes_read = 0;
+
+    printf("op code inicial: %d\n", op_code);
 
     printf("Vamos ler um pedido\n");
     if (op_code == TFS_OP_CODE_MOUNT) {
@@ -379,6 +389,9 @@ int treat_request(char buff, FILE *fserv) {
             return -1;
         }
         session_id = tfs_mount(path);
+        if (session_id == -1) {
+            return -1;
+        }
 
         if (pthread_mutex_lock(&client_mutexes[session_id]) != 0) {
             return -1;
@@ -399,8 +412,12 @@ int treat_request(char buff, FILE *fserv) {
     }
     else {
         /* Operation requires knowing client's id */
-        printf("Vamos ler o session id\n");
-        if (fread(&session_id, 1, sizeof(int), fserv) != sizeof(int)) {
+        printf("Vamos ler o session id e neste momento é %d\n", session_id);
+        if ((bytes_read = fread(&session_id, 1, sizeof(int), fserv)) != sizeof(int)) {
+            perror("Erro");
+            printf("Lemos este nº de bytes %ld\n", bytes_read);
+            printf("O id lido foi %d\n", session_id);
+            printf("Falhou ao ler o id, c'est la vie\n");
             return -1;
         }
 
@@ -417,7 +434,6 @@ int treat_request(char buff, FILE *fserv) {
         return -1;
     }
     message = &(prod_cons_buffer[session_id][0]);
-    message->op_code = op_code;
     printf("O id é %d\n", session_id);
     message->session_id = session_id;
     
@@ -472,8 +488,7 @@ int treat_request(char buff, FILE *fserv) {
             }
             return -1;
         }
-
-        message->dynamic_buffer = (char *) malloc(sizeof(char) * len);
+        message->dynamic_buffer = (char *) malloc(sizeof(char) * message->len);
         if (message->dynamic_buffer == NULL) {
             message->op_code = -1;
             if (pthread_mutex_unlock(&client_mutexes[session_id]) != 0) {
@@ -481,7 +496,7 @@ int treat_request(char buff, FILE *fserv) {
             }
             return -1;
         }
-        if (fread(message->dynamic_buffer, sizeof(char), len, fserv) != (sizeof(char) * len)) {
+        if ((fread(message->dynamic_buffer, sizeof(char), message->len, fserv)) != message->len) {
             message->op_code = -1;
             free(message->dynamic_buffer);
             if (pthread_mutex_unlock(&client_mutexes[session_id]) != 0) {
@@ -521,6 +536,7 @@ int treat_request(char buff, FILE *fserv) {
         }
         return -1;
     }
+    message->op_code = op_code;
     if (pthread_cond_signal(&client_cond_var[session_id]) != 0) {
         return -1;
     }
@@ -569,7 +585,7 @@ int treat_request_thread(int session_id) {
         int fhandle = req->fhandle;
         size_t len = req->len;
         char buffer[len];
-        memcpy(buffer, req->buffer, len);
+        memcpy(buffer, req->dynamic_buffer, len);
         if (treat_write_request(session_id, fhandle, len, buffer) == -1) {
             req->op_code = -1;
             return -1;

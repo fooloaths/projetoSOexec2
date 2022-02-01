@@ -9,7 +9,7 @@
 
 int main(int argc, char **argv) {
 
-    char *str = "AAA!";
+    char *str = "BBB!";
     char *path = "/f1";
     char buffer[40];
 

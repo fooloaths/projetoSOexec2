@@ -212,11 +212,15 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
 
     char opcode = TFS_OP_CODE_WRITE;
     buf[0] = opcode;
-    memcpy(buf + 1, &session_id, sizeof(int));
-    memcpy(buf + 1 + sizeof(int), &fhandle, sizeof(int));
+    memcpy(buf + sizeof(char), &session_id, sizeof(int));
+    memcpy(buf + sizeof(char) + sizeof(int), &fhandle, sizeof(int));
     memcpy(buf + 1 + sizeof(int) + sizeof(int), &len, sizeof(size_t));
     memcpy(buf + 1 + sizeof(int) + sizeof(int) + sizeof(size_t), buffer, len);
     size_written = fwrite(&buf, 1, sizeof(buf), fserv);
+    printf("O buffer é %s\n", (char *) buffer);
+    printf("O buff[17-21] = %c %c %c %c\n", buf[17], buf[18], buf[19], buf[20]);
+    printf("O id que escrevemos é %d\n", (int) buf[1]);
+    printf("O sizeof(buf) é %ld e devia ser %ld\n", sizeof(buf), sizeof(char) + sizeof(int) + sizeof(int) + sizeof(size_t) + len);
     if (size_written != sizeof(buf)) {
         return -1;
     }
@@ -229,7 +233,7 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
     if (fread(&operation_result, 1, sizeof(size_t), fcli) != sizeof(size_t)) {
         return -1;
     }
-
+    printf("Recebou resposta\n");
     return operation_result;
 }
 
