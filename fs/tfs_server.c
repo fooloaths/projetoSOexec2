@@ -12,7 +12,7 @@
 //TODO: Redifine in config.h
 //TODO: Verificar se estamos sempre a devolver erro ao cliente (escrevendo no pipe) --> Talvez criar função para isso
 //TODO: Perguntar ao prof se é para fechar (do lado do servidor) o pipe do cliente sempre que termina uma operação ou se é só no unmount
-#define S 5 /* confirmar isto com os profs. É suposto ser o nº de possíveis sessões ativas */
+#define S 1 /* confirmar isto com os profs. É suposto ser o nº de possíveis sessões ativas */
 #define FREE 1
 #define TAKEN 0
 
@@ -468,15 +468,15 @@ int treat_request_thread(int id) {
 
 void* tfs_server_thread(void* args) {
     int id = *((int *) args);
-    struct request message = prod_cons_buffer[id][0];
-
+    struct request *message = &prod_cons_buffer[id][0];
+    
     while (1) {
         printf("OLA BZZT ESTOU DENTRO DA FUNCAO TFS_SERVER_THREAD BZZT\n");
         if (pthread_mutex_lock(&client_mutexes[id]) != 0) {
             return NULL;
         }
-        printf("op code = %d\n", message.op_code);
-        while (message.op_code == -1) {
+        printf("op code = %d\n", message->op_code);
+        while (message->op_code == -1) {
             printf("OLA BZZT ESTOU DENTRO DA WHILE message.opcode == -1 BZZT\n");
             // printf("tfs thread trabalhadora: Vai dormir\n", id);
             printf("id = %d\n", id);
@@ -491,7 +491,7 @@ void* tfs_server_thread(void* args) {
 
         printf("acordou\n");
         if (treat_request_thread(id) == -1) {
-            message.op_code = -1;
+            message->op_code = -1;
             //TODO oq fazer se a thread for morta aqui e o servidor continuar a mandar peidos???
             pthread_mutex_unlock(&client_mutexes[id]);
 
@@ -503,7 +503,7 @@ void* tfs_server_thread(void* args) {
 
             pthread_exit(NULL);
         }
-        message.op_code = -1;
+        message->op_code = -1;
         pthread_mutex_unlock(&client_mutexes[id]);
     }
 }
