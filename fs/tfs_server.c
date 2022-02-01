@@ -346,7 +346,7 @@ int tfs_mount(char *path) {
         return -1;
     }
 
-    return 0;
+    return id;
 }
 
 int tfs_unmount(int id) {
@@ -391,7 +391,7 @@ int treat_request(char buff, FILE *fserv) {
         if (fread(path, sizeof(char), sizeof(path), fserv) != sizeof(path)) {
             return -1;
         }
-        tfs_mount(path);
+        session_id = tfs_mount(path);
 
         if (pthread_mutex_lock(&client_mutexes[session_id]) != 0) {
             return -1;
