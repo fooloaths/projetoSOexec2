@@ -143,11 +143,7 @@ int terminate_session(int id) {
 int send_reply(const void *restrict ptr, FILE *fcli, size_t size) {
     size_t bytes_written;
 
-    printf("bbbb\n");
-    printf("O pointer é %p\n", fcli);
-    printf("AAAA o id é %d\n", *((int *)ptr));
     bytes_written = fwrite(ptr, size, 1, fcli);
-    printf("cccc\n");
     if ((bytes_written * size) < size) {
         return -1;
     }
@@ -158,19 +154,15 @@ int treat_open_request(int id, char *name, int flags) {
     FILE *fcli;
     int operation_result;
 
+    printf("Treat open request: Vamos abrir o pipe do cliente\n");
     /* Open client pipe */
-    printf("1\n");
-    printf("O id é %d\n", id);
     if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
         return -1;
     }
 
-    printf("2\n");
     operation_result = tfs_open(name, flags);
 
-    printf("3\n");
-    printf("O operation result = %d\n", operation_result);
-    printf("O pointer é %p\n", fcli);
+    printf("Treat open request: Vamos escrever o resultado\n");
     if (send_reply(&operation_result, fcli, sizeof(int)) == -1) {
         if (fclose(fcli) != 0) {
             return -1;
@@ -178,7 +170,7 @@ int treat_open_request(int id, char *name, int flags) {
         return -1;
     }
 
-    printf("4\n");
+    printf("Treat open request: Vamos fechar o pipe\n");
     if (fclose(fcli) != 0) {
         return -1;
     }
@@ -216,14 +208,11 @@ ssize_t treat_write_request(int id, int fhandle, size_t len, char *buff) {
     ssize_t operation_result = 0;
 
     /* Open client pipe */
-    printf("1\n");
     if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
         return -1;
     }
-    printf("2\n");
     operation_result = tfs_write(fhandle, buff, len);
 
-    printf("3\n");
     if (send_reply(&operation_result, fcli, sizeof(ssize_t)) == -1) {
         if (fclose(fcli) != 0) {
             return -1;
@@ -231,7 +220,6 @@ ssize_t treat_write_request(int id, int fhandle, size_t len, char *buff) {
         return -1;  
     }
 
-    printf("3\n");
     if (fclose(fcli) != 0) {
         return -1;
     }
@@ -329,7 +317,6 @@ int tfs_mount(char *path) {
 
     if (id != -1) {
         /* Update session info */
-        printf("IIIIIIIIIIIIIIIIIIIID = %d\n", id);
         session_ids[id] = TAKEN;
         strcpy(client_pipes[id], path);
     }
@@ -398,7 +385,6 @@ int treat_request(char buff, FILE *fserv) {
         }
         printf("Mount: Fechou o lock\n");
         message = &(prod_cons_buffer[session_id][0]);
-        message->op_code = op_code;
         message->session_id = session_id;
         if (pthread_cond_signal(&client_cond_var[session_id]) != 0) {
             return -1;
@@ -430,9 +416,9 @@ int treat_request(char buff, FILE *fserv) {
     if (pthread_mutex_lock(&client_mutexes[session_id]) != 0) {
         return -1;
     }
-    printf("aaaaaaaaa\n");
     message = &(prod_cons_buffer[session_id][0]);
     message->op_code = op_code;
+    printf("O id é %d\n", session_id);
     message->session_id = session_id;
     
     if (op_code == TFS_OP_CODE_UNMOUNT ) {
@@ -442,7 +428,7 @@ int treat_request(char buff, FILE *fserv) {
          */
     }
     else if (op_code == TFS_OP_CODE_OPEN) {
-
+        printf("Vamos ler as coisas do open\n");
         if (fread(message->buffer, sizeof(char), FILE_NAME_SIZE, fserv) != FILE_NAME_SIZE) {
             message->op_code = -1;
             if (pthread_mutex_unlock(&client_mutexes[session_id]) != 0) {
@@ -457,7 +443,7 @@ int treat_request(char buff, FILE *fserv) {
             }
             return -1;
         }
-
+        printf("Lemos tudo do open\n");
     }
     else if (op_code == TFS_OP_CODE_CLOSE) {
 
@@ -535,14 +521,14 @@ int treat_request(char buff, FILE *fserv) {
         }
         return -1;
     }
-    if (pthread_mutex_unlock(&client_mutexes[session_id]) != 0) {
-        return -1;
-    }
     if (pthread_cond_signal(&client_cond_var[session_id]) != 0) {
         return -1;
     }
-
-
+    if (pthread_mutex_unlock(&client_mutexes[session_id]) != 0) {
+        return -1;
+    }
+    printf("Demos signal e unlock\n");
+    printf("Aquando do signal o opcode é %d\n", message->op_code);
     return 0;
 }
 
@@ -620,9 +606,11 @@ void* tfs_server_thread(void* args) {
     struct request *message = &prod_cons_buffer[id][0];
     
     while (1) {
+        printf("Vamos passar o 1º lock do while principal\n");
         if (pthread_mutex_lock(&client_mutexes[id]) != 0) {
             return NULL;
         }
+        printf("Conseguimos\n");
         while (message->op_code == -1) {
             printf("Vou dormir\n");
             if (pthread_cond_wait(&client_cond_var[id], &client_mutexes[id]) != 0) {

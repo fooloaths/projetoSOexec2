@@ -137,6 +137,7 @@ int tfs_open(char const *name, int flags) {
     int operation_result;
     char buf[sizeof(char) + sizeof(int) + FILE_NAME_SIZE + sizeof(int)];
 
+    printf("Cliente: Vamos começar o open\n");
     if ((fserv = fopen(server_pipe, "w" )) == NULL) {
         return -1;
     }
@@ -162,6 +163,7 @@ int tfs_open(char const *name, int flags) {
         /* Failed to read operation result from client's named pipe */
         return -1;
     }
+    printf("Cliente: O open acabou\n");
 
     return operation_result;
 }
