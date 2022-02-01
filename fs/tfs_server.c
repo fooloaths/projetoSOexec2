@@ -12,7 +12,7 @@
 //TODO: Redifine in config.h
 //TODO: Verificar se estamos sempre a devolver erro ao cliente (escrevendo no pipe) --> Talvez criar função para isso
 //TODO: Perguntar ao prof se é para fechar (do lado do servidor) o pipe do cliente sempre que termina uma operação ou se é só no unmount
-#define S 64 /* confirmar isto com os profs. É suposto ser o nº de possíveis sessões ativas */
+#define S 5 /* confirmar isto com os profs. É suposto ser o nº de possíveis sessões ativas */
 #define FREE 1
 #define TAKEN 0
 
@@ -42,6 +42,7 @@ static pthread_cond_t client_cond_var[S];
 static struct request prod_cons_buffer[S][1];
 
 void* tfs_server_thread(void *);
+int tfs_mount(char *path);
 
 int server_init() {
     tfs_init();
@@ -57,8 +58,11 @@ int server_init() {
         }
 
         prod_cons_buffer[i][0].op_code = -1;
-
-        pthread_create(&threads[i], NULL, tfs_server_thread, (void *) i);
+        size_t *i_pointer = malloc(sizeof(*i_pointer));
+        *i_pointer = i;
+        if (pthread_create(&threads[i], NULL, tfs_server_thread, (void*)i_pointer) != 0) {
+            return -1;
+        }
 
         for (size_t j = 0; j < PIPE_PATH_SIZE; j++) {
             client_pipes[i][j] = '\0';
@@ -82,7 +86,7 @@ int valid_id(int id) {
     return id >= 0 && id < S;
 }
 
-int session_id_is_free(int id) {
+int session_id_is_free(int id) {    
     return session_ids[id] == FREE;
 }
 
@@ -281,8 +285,11 @@ int treat_request(char buff, FILE *fserv) {
         message = &(prod_cons_buffer[session_id][0]);
         message->op_code = op_code;
         message->session_id = session_id;
-        pthread_mutex_unlock(&client_mutexes[session_id]);
 
+        // pthread_mutex_unlock(&client_mutexes[session_id]);
+        printf("session id = %d\n", session_id);
+        pthread_cond_signal(&client_cond_var[session_id]);
+        pthread_mutex_unlock(&client_mutexes[session_id]);
         return 0;
     }
     else {
@@ -297,12 +304,15 @@ int treat_request(char buff, FILE *fserv) {
         }
     }
     
+    printf("mutex 2\n");
     pthread_mutex_lock(&client_mutexes[session_id]);
     message = &(prod_cons_buffer[session_id][0]);
     message->op_code = op_code;
     message->session_id = session_id;
+    printf("mutex 3 swag\n");
     
     if (op_code == TFS_OP_CODE_UNMOUNT ) {
+        printf("HELLO BZZT BZZT I AM UNMOUNT OMHMMMMMMMMMMMMMMMMM\n");
         /*
          * Por agora não faz nada, deixo só aqui por enquanto para ficar legível o que está a acontecer
          *
@@ -383,16 +393,24 @@ int treat_request(char buff, FILE *fserv) {
         return -1;
     }
     pthread_mutex_unlock(&client_mutexes[session_id]);
+    pthread_cond_signal(&client_cond_var[session_id]);
+
+    printf("saiu\n");
 
     return 0;
 }
 
 int treat_request_thread(int id) {
+    printf("BZZT ESTOU DENTRO DO TREAT REQUEST THREAD BZZT\n");
     struct request *req = &(prod_cons_buffer[id][0]);
     int op_code = req->op_code;
     int session_id = id;
 
     //MOUNT and UNMOUNT are treated in the main thread
+    if (op_code == TFS_OP_CODE_MOUNT) {
+        printf("should be a tfs mount\n");
+    }
+
     if (op_code == TFS_OP_CODE_OPEN) {
         char *name = req->buffer;
         int flags = req->flags;
@@ -453,20 +471,28 @@ void* tfs_server_thread(void* args) {
     struct request message = prod_cons_buffer[id][0];
 
     while (1) {
-        
+        printf("OLA BZZT ESTOU DENTRO DA FUNCAO TFS_SERVER_THREAD BZZT\n");
+        if (pthread_mutex_lock(&client_mutexes[id]) != 0) {
+            return NULL;
+        }
+        printf("op code = %d\n", message.op_code);
         while (message.op_code == -1) {
+            printf("OLA BZZT ESTOU DENTRO DA WHILE message.opcode == -1 BZZT\n");
             // printf("tfs thread trabalhadora: Vai dormir\n", id);
-            
+            printf("id = %d\n", id);
             if (pthread_cond_wait(&client_cond_var[id], &client_mutexes[id]) != 0) {
                 //TODO pensar como tratar do erro
+                printf("morreu\n");
                 pthread_exit(NULL);
             }
+            //goodbye u will be missed
+            // // break;
         }
 
-        pthread_mutex_lock(&client_mutexes[id]);
+        printf("acordou\n");
         if (treat_request_thread(id) == -1) {
             message.op_code = -1;
-            //TODO oq fazer se a thread for morta aqui e o servidor continuar a mandar pedidos???
+            //TODO oq fazer se a thread for morta aqui e o servidor continuar a mandar peidos???
             pthread_mutex_unlock(&client_mutexes[id]);
 
             /*
@@ -478,7 +504,7 @@ void* tfs_server_thread(void* args) {
             pthread_exit(NULL);
         }
         message.op_code = -1;
-        pthread_mutex_lock(&client_mutexes[id]);
+        pthread_mutex_unlock(&client_mutexes[id]);
     }
 }
 
@@ -586,6 +612,7 @@ int main(int argc, char **argv) {
         }
 
         if (treat_request(buff, fserv) == -1) {
+            fclose(fserv);
             return -1;
         }
     }
