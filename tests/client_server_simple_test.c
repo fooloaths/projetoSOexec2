@@ -5,18 +5,22 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h> // Not sure se este é preciso
 /*  This test is similar to test1.c from the 1st exercise.
     The main difference is that this one explores the
     client-server architecture of the 2nd exercise. */
 
-#define CLIENT_COUNT 20
+#define CLIENT_COUNT 3
 #define CLIENT_PIPE_NAME_LEN 40
 #define CLIENT_PIPE_NAME_FORMAT "/tmp/tfs_c%d"
 
 void run_test(char *server_pipe, int client_id);
 
 int main(int argc, char **argv) {
+
     if (argc < 2) {
         printf(
             "You must provide the following arguments: 'server_pipe_path'\n");
@@ -40,8 +44,9 @@ int main(int argc, char **argv) {
     for (int i = 0; i < CLIENT_COUNT; ++i) {
         int result;
         waitpid(child_pids[i], &result, 0);
+        printf("%d\n", WTERMSIG(result));
         assert(WIFEXITED(result));
-        // printf("Client %d exited successfully.\n", i);
+        printf("Client %d exited successfully.\n", i);
     }
 
     printf("Successful test.\n");

@@ -15,11 +15,11 @@ static int tfs_state;
 
 int tfs_init() {
     state_init();
+    
     tfs_state = INITIALIZED;
 
     if (pthread_mutex_init(&single_global_lock, 0) != 0)
         return -1;
-    
     if (pthread_cond_init(&cond_open_files, 0) != 0)
         return -1;
     if (pthread_mutex_init(&system_lock, 0) != 0)
@@ -50,7 +50,13 @@ int tfs_init() {
 
 int tfs_destroy() {
     state_destroy();
+    if (pthread_mutex_lock(&destruction_lock) != 0) {
+        return -1;
+    }
     tfs_state = DESTROYED;
+    if (pthread_mutex_unlock(&destruction_lock) != 0) {
+        return -1;
+    } 
     if (pthread_mutex_destroy(&single_global_lock) != 0) {
         return -1;
     }
@@ -184,11 +190,20 @@ static int _tfs_open_unsynchronized(char const *name, int flags) {
 
 int tfs_open(char const *name, int flags) {
 
+    if (pthread_mutex_lock(&destruction_lock) != 0) {
+        return -1;
+    }
     if (tfs_state != INITIALIZED) {
         /* Tried to open file after system destruction */
+        if (pthread_mutex_unlock(&destruction_lock) != 0) {
+            return -1;
+        }
         return -1;
     }
 
+    if (pthread_mutex_unlock(&destruction_lock) != 0) {
+        return -1;
+    }
     if (pthread_mutex_lock(&single_global_lock) != 0)
         return -1;
     

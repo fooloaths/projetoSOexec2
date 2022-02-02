@@ -49,7 +49,6 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
 
     buff[0] = op_code;
     strncpy(buff + 1, client_pipe_path, PIPE_PATH_SIZE - 1);
-    printf("Enviou pedido\n");
     size_written = fwrite(buff, 1, sizeof(buff), fserv);
     if (size_written != sizeof(buff)) {
         /* Error occured or nothing was written */
@@ -61,13 +60,11 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     }   
 
 
-    printf("Vai ler pedido\n");
     /* Read from client's named pipe the assigned session id */
     if (fread(&id, 1, sizeof(int), fcli) != sizeof(int)) {
         /* Error occured or nothing was read */
         return -1;
     }
-    printf("Já leu\n");
 
     if (id == -1) {
         /* Failed to mount to tfs server */
@@ -119,6 +116,7 @@ int tfs_unmount() {
         return -1;
     }
 
+
     /* Close pipes */
     if (fclose(fcli) != 0) {
         /* Failed to close client's named pipe */
@@ -137,7 +135,6 @@ int tfs_open(char const *name, int flags) {
     int operation_result;
     char buf[sizeof(char) + sizeof(int) + FILE_NAME_SIZE + sizeof(int)];
 
-    printf("Cliente: Vamos começar o open\n");
     if ((fserv = fopen(server_pipe, "w" )) == NULL) {
         return -1;
     }
@@ -163,7 +160,7 @@ int tfs_open(char const *name, int flags) {
         /* Failed to read operation result from client's named pipe */
         return -1;
     }
-    printf("Cliente: O open acabou\n");
+
 
     return operation_result;
 }
@@ -217,10 +214,6 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
     memcpy(buf + 1 + sizeof(int) + sizeof(int), &len, sizeof(size_t));
     memcpy(buf + 1 + sizeof(int) + sizeof(int) + sizeof(size_t), buffer, len);
     size_written = fwrite(&buf, 1, sizeof(buf), fserv);
-    printf("O buffer é %s\n", (char *) buffer);
-    printf("O buff[17-21] = %c %c %c %c\n", buf[17], buf[18], buf[19], buf[20]);
-    printf("O id que escrevemos é %d\n", (int) buf[1]);
-    printf("O sizeof(buf) é %ld e devia ser %ld\n", sizeof(buf), sizeof(char) + sizeof(int) + sizeof(int) + sizeof(size_t) + len);
     if (size_written != sizeof(buf)) {
         return -1;
     }
@@ -233,7 +226,7 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
     if (fread(&operation_result, 1, sizeof(size_t), fcli) != sizeof(size_t)) {
         return -1;
     }
-    printf("Recebou resposta\n");
+
     return operation_result;
 }
 
@@ -271,6 +264,7 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
             return -1;
         }
     }
+
 
 
     return operation_result;

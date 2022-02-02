@@ -8,16 +8,24 @@
     client-server architecture of the 2nd exercise. */
 
 int main(int argc, char **argv) {
+    char *str = "AAA!";
+    char *path = "/f1";
+    char buffer[40];
 
-
-
+    int f;
     if (argc < 3) {
         printf("You must provide the following arguments: 'client_pipe_path "
                "server_pipe_path'\n");
         return 1;
     }
 
-    assert(tfs_unmount() == -1);
+    assert(tfs_mount(argv[1], argv[2]) == 0);
+
+    f = tfs_open(path, TFS_O_CREAT);
+    assert(f != -1);
+
+    assert(tfs_shutdown_after_all_closed() == 0);
+
 
     printf("Successful test.\n");
 
