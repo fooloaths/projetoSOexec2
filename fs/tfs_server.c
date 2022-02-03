@@ -6,22 +6,14 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <unistd.h> // Not sure se este é preciso
+#include <unistd.h>
 #include <pthread.h>
 #include <signal.h>
 
-//TODO: Redifine in config.h
-//TODO: Verificar se estamos sempre a devolver erro ao cliente (escrevendo no pipe) --> Talvez criar função para isso
-//TODO: Perguntar ao prof se é para fechar (do lado do servidor) o pipe do cliente sempre que termina uma operação ou se é só no unmount
-#define S 20 /* confirmar isto com os profs. É suposto ser o nº de possíveis sessões ativas */
+
+#define S 20
 #define FREE 1
 #define TAKEN 0
-
-//?? is this used?
-struct session { /* Não sei se é isto que temos de fazer */
-    char const *pipe;
-    size_t session_id;
-};
 
 struct request {
     char op_code;
@@ -37,7 +29,6 @@ static int session_ids[S];
 static char client_pipes[S][PIPE_PATH_SIZE];
 static pthread_mutex_t id_table_mutex;
 static pthread_t threads[S];
-//i think this line is useless?
 static pthread_mutex_t client_mutexes[S];
 static pthread_cond_t client_cond_var[S];
 
@@ -45,6 +36,7 @@ static struct request prod_cons_buffer[S][1];
 
 void* tfs_server_thread(void *);
 int tfs_mount(char *path);
+int tfs_unmount(int id);
 
 int server_init() {
     tfs_init();
@@ -66,6 +58,9 @@ int server_init() {
 
         prod_cons_buffer[i][0].op_code = -1;
         size_t *i_pointer = malloc(sizeof(*i_pointer));
+        if (i_pointer == NULL) {
+            return -1;
+        }
         *i_pointer = i;
         if (pthread_create(&threads[i], NULL, tfs_server_thread, (void*)i_pointer) != 0) {
             return -1;
@@ -116,8 +111,6 @@ int session_id_is_free(int id) {
     return 0;
 }
 
-//TODO alter this to also close thread and mutex if they are not NULL
-//TODO alter this so set the buffer[id] to NULL
 int terminate_session(int id) {
     if (pthread_mutex_lock(&id_table_mutex) != 0) {
         return -1;
@@ -153,6 +146,7 @@ int treat_open_request(int id, char *name, int flags) {
 
     /* Open client pipe */
     if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
+        tfs_unmount(id);
         return -1;
     }
 
@@ -161,12 +155,15 @@ int treat_open_request(int id, char *name, int flags) {
 
     if (send_reply(&operation_result, fcli, sizeof(int)) == -1) {
         if (fclose(fcli) != 0) {
+            tfs_unmount(id);
             return -1;
         }
+        tfs_unmount(id);
         return -1;
     }
 
     if (fclose(fcli) != 0) {
+        tfs_unmount(id);
         return -1;
     }
 
@@ -179,6 +176,7 @@ int treat_close_request(int id, int fhandle) {
 
     /* Open client pipe */
     if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
+        tfs_unmount(id);
         return -1;
     }
 
@@ -186,12 +184,15 @@ int treat_close_request(int id, int fhandle) {
 
     if (send_reply(&operation_result, fcli, sizeof(int)) == -1) {
         if (fclose(fcli) != 0) {
+            tfs_unmount(id);
             return -1;
         }
+        tfs_unmount(id);
         return -1;
     }
 
     if (fclose(fcli) != 0) {
+        tfs_unmount(id);
         return -1;
     }
 
@@ -204,18 +205,22 @@ ssize_t treat_write_request(int id, int fhandle, size_t len, char *buff) {
 
     /* Open client pipe */
     if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
+        tfs_unmount(id);
         return -1;
     }
     operation_result = tfs_write(fhandle, buff, len);
         
     if (send_reply(&operation_result, fcli, sizeof(ssize_t)) == -1) {
         if (fclose(fcli) != 0) {
+            tfs_unmount(id);
             return -1;
         }
+        tfs_unmount(id);
         return -1;  
     }
 
     if (fclose(fcli) != 0) {
+        tfs_unmount(id);
         return -1;
     }
 
@@ -229,13 +234,13 @@ ssize_t treat_request_read(int id, int fhandle, size_t len) {
     size_t size_written = 0;
 
     if (buff == NULL) {
-        //TODO send reply
         return -1;
     }
 
     /* Open client pipe */
     if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
         free(buff);
+        tfs_unmount(id);
         return -1;
     }
 
@@ -243,8 +248,10 @@ ssize_t treat_request_read(int id, int fhandle, size_t len) {
     if (send_reply(&operation_result, fcli, sizeof(ssize_t)) == -1) {
         free(buff);
         if (fclose(fcli) != 0) {
+            tfs_unmount(id);
             return -1;
         }
+        tfs_unmount(id);
         return -1;
     }
 
@@ -254,8 +261,10 @@ ssize_t treat_request_read(int id, int fhandle, size_t len) {
         if ((size_written * sizeof(ssize_t)) < sizeof(ssize_t)) {
             free(buff);
             if (fclose(fcli) != 0) {
+                tfs_unmount(id);
                 return -1;
             }
+            tfs_unmount(id);
             return -1;
         }
     }
@@ -263,6 +272,7 @@ ssize_t treat_request_read(int id, int fhandle, size_t len) {
 
     if (fclose(fcli) != 0) {
         free(buff);
+        tfs_unmount(id);
         return -1;
     }
 
@@ -276,6 +286,7 @@ int treat_request_shutdown(int id) {
 
     /* Open client pipe */
     if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
+        tfs_unmount(id);
         return -1;
     }
 
@@ -283,16 +294,20 @@ int treat_request_shutdown(int id) {
 
     if (send_reply(&operation_result, fcli, sizeof(int)) == -1) {
         if (fclose(fcli) != 0) {
+            tfs_unmount(id);
             return -1;
         }
+        tfs_unmount(id);
         return -1;
     }
 
     if (fclose(fcli) != 0) {
+        tfs_unmount(id);
         return -1;
     }
 
     if (operation_result == -1) {
+        tfs_unmount(id);
         return -1;
     }
 
@@ -316,13 +331,16 @@ int tfs_mount(char *path) {
 
     if (send_reply(&id, fcli, sizeof(int)) == -1) {
         if ((fclose(fcli)) != 0) {
+            tfs_unmount(id);
             return -1;
         }
+        tfs_unmount(id);
         return -1;
     }
 
     if (fclose(fcli) != 0) {
         /* Failed to close file */
+        tfs_unmount(id);
         return -1;
     }
 
@@ -583,23 +601,13 @@ void* tfs_server_thread(void* args) {
         }
         while (message->op_code == -1) {
             if (pthread_cond_wait(&client_cond_var[id], &client_mutexes[id]) != 0) {
-                //TODO pensar como tratar do erro
-                printf("morreu\n");
                 pthread_exit(NULL);
             }
         }
         if (treat_request_thread(id) == -1) {
             message->op_code = -1;
-            //TODO oq fazer se a thread for morta aqui e o servidor continuar a mandar pedidos???
+            tfs_unmount(id);
             pthread_mutex_unlock(&client_mutexes[id]);
-
-            /*
-             * Vejo duas hipotesses aqui:
-             *  a) Para além de FREE e TAKEN, acrescentamos BROKEN e matamos esta thread
-             *  b) Voltamos a meter id = FREE e não matamos a thread
-             */ 
-
-            pthread_exit(NULL);
         }
         message->op_code = -1;
         pthread_mutex_unlock(&client_mutexes[id]);
@@ -610,7 +618,7 @@ void* tfs_server_thread(void* args) {
 int main(int argc, char **argv) {
     FILE *fserv;
     size_t r_buffer;
-    char buff = '\0'; //Valor temporário
+    char buff = '\0';
 
     signal(SIGPIPE, SIG_IGN);
 
@@ -622,7 +630,9 @@ int main(int argc, char **argv) {
     char *pipename = argv[1];
     printf("Starting TecnicoFS server with pipe called %s\n", pipename);
 
-    unlink(pipename); //Não sei se isto fica aqui
+    if (unlink(pipename) == -1) {
+        return -1;
+    }
 
     if (server_init() == -1) {
         return -1;
@@ -638,7 +648,6 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    /* TO DO */
     /* Main loop */
     while (1) {
         /* Read requests from pipe */

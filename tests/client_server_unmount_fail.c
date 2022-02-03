@@ -8,9 +8,7 @@
     client-server architecture of the 2nd exercise. */
 
 int main(int argc, char **argv) {
-    char *str = "AAA!";
     char *path = "/f1";
-    char buffer[40];
 
     int f;
     if (argc < 3) {
