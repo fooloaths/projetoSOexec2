@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <unistd.h> // Not sure se este é preciso
 #include <pthread.h>
+#include <signal.h>
 
 //TODO: Redifine in config.h
 //TODO: Verificar se estamos sempre a devolver erro ao cliente (escrevendo no pipe) --> Talvez criar função para isso
@@ -611,6 +612,8 @@ int main(int argc, char **argv) {
     size_t r_buffer;
     char buff = '\0'; //Valor temporário
 
+    signal(SIGPIPE, SIG_IGN);
+
     if (argc < 2) {
         printf("Please specify the pathname of the server's pipe.\n");
         return 1;
@@ -651,7 +654,9 @@ int main(int argc, char **argv) {
         }
 
         if (treat_request(buff, fserv) == -1) {
-            fclose(fserv);
+            if (fclose(fserv) != 0) {
+                return -1;
+            }
             return -1;
         }
     }

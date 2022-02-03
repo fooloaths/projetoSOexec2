@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string.h>
+#include <signal.h>
 #include <unistd.h> // Not sure se este é preciso
 
 
@@ -15,13 +16,14 @@
 #define PIPE_NAME_SIZE 40
 
 
+
 static int session_id = -1;
 static char const *pipe_path = NULL;
 static char const *server_pipe = NULL;
 static FILE *fserv, *fcli;
 
-
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
+    signal(SIGPIPE, SIG_IGN);
     int id;
     size_t size_written = 0;
     char buff[PIPE_PATH_SIZE + 1] = {'\0'};
@@ -82,6 +84,8 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
 }
 
 int tfs_unmount() {
+    signal(SIGPIPE, SIG_IGN);
+
     /* TODO: Implement this */
     //TODO Concatenar tudo para mandar ao servidor
     //TODO usar uma função auxiliar para mandar a mensagem
@@ -131,6 +135,9 @@ int tfs_unmount() {
 
 int tfs_open(char const *name, int flags) {
     /* TODO: Implement this */
+    signal(SIGPIPE, SIG_IGN);
+
+    char fake_name[FILE_NAME_SIZE] = {'\0'};
     size_t size_written; /* OP code, id, name and flags */
     int operation_result;
     char buf[sizeof(char) + sizeof(int) + FILE_NAME_SIZE + sizeof(int)];
@@ -138,11 +145,13 @@ int tfs_open(char const *name, int flags) {
     if ((fserv = fopen(server_pipe, "w" )) == NULL) {
         return -1;
     }
+    
+    memccpy(fake_name, name, '\0', FILE_NAME_SIZE);
 
     char opcode = TFS_OP_CODE_OPEN;
     buf[0] = opcode;
     memcpy(buf + 1, &session_id, sizeof(int));
-    memcpy(buf + 1 + sizeof(int), name, FILE_NAME_SIZE);
+    memcpy(buf + 1 + sizeof(int), fake_name, FILE_NAME_SIZE);
     memcpy(buf + 1 + sizeof(int) + FILE_NAME_SIZE, &flags, sizeof(int));
     size_written = fwrite(&buf, 1, sizeof(buf), fserv);
     if (size_written != sizeof(buf)) {
@@ -161,12 +170,12 @@ int tfs_open(char const *name, int flags) {
         return -1;
     }
 
-
     return operation_result;
 }
 
 int tfs_close(int fhandle) {
     //TODO IMPLEMENTAR
+    signal(SIGPIPE, SIG_IGN);
 
 
     size_t size_written; /* OP code, id, name and flags */
@@ -198,6 +207,9 @@ int tfs_close(int fhandle) {
 }
 
 ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
+    signal(SIGPIPE, SIG_IGN);
+
+    
     //TODO implementar
     size_t size_written; /* OP code, id, name and flags */
     ssize_t operation_result;
@@ -231,6 +243,8 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
 }
 
 ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
+    signal(SIGPIPE, SIG_IGN);
+
     size_t size_written;
     ssize_t operation_result;
     char buf[sizeof(char) + sizeof(int) + sizeof(int) + sizeof(size_t)];
@@ -271,6 +285,8 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
 }
 
 int tfs_shutdown_after_all_closed() {
+    signal(SIGPIPE, SIG_IGN);
+
     size_t size_written;
     int operation_result;
     char buf[sizeof(char) + sizeof(int)];

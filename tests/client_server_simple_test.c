@@ -8,12 +8,13 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <unistd.h> // Not sure se este é preciso
+// // #include <unistd.h> 
+// // // Not sure se este é preciso
 /*  This test is similar to test1.c from the 1st exercise.
     The main difference is that this one explores the
     client-server architecture of the 2nd exercise. */
 
-#define CLIENT_COUNT 3
+#define CLIENT_COUNT 20
 #define CLIENT_PIPE_NAME_LEN 40
 #define CLIENT_PIPE_NAME_FORMAT "/tmp/tfs_c%d"
 
