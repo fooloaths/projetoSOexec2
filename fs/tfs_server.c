@@ -567,6 +567,7 @@ int treat_request_thread(int session_id) {
             req->op_code = -1;
             return -1;
         }
+        free(req->dynamic_buffer);
     }
     else if (op_code == TFS_OP_CODE_READ) {
         int fhandle = req->fhandle;
