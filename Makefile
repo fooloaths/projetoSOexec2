@@ -14,7 +14,7 @@ INCLUDES = $(addprefix -I, $(INCLUDE_DIRS))
 SOURCES  := $(wildcard */*.c)
 HEADERS  := $(wildcard */*.h)
 OBJECTS  := $(SOURCES:.c=.o)
-TARGET_EXECS := fs/tfs_server tests/lib_destroy_after_all_closed_test tests/client_server_simple_test tests/client_server_shutdown_test tests/client_server_unmount_fail
+TARGET_EXECS := fs/tfs_server tests/lib_destroy_after_all_closed_test tests/client_server_simple_test tests/client_server_shutdown_test tests/client_server_unmount_fail tests/lib_destroy_after_all_closed_open tests/teste2
 
 # VPATH is a variable used by Makefile which finds *sources* and makes them available throughout the codebase
 # vpath %.h <DIR> tells make to look for header files in <DIR>
@@ -23,9 +23,10 @@ vpath %.h $(INCLUDE_DIRS)
 
 CFLAGS = -std=c11 -D_POSIX_C_SOURCE=200809L
 CFLAGS += $(INCLUDES)
+LDLIBS = -ltsan
 
 # Warnings
-CFLAGS += -fdiagnostics-color=always -Wall -Wextra -Wcast-align -Wconversion -Wfloat-equal -Wformat=2 -Wnull-dereference -Wshadow -Wsign-conversion -Wswitch-default -Wswitch-enum -Wundef -Wunreachable-code -Wunused
+CFLAGS += -fdiagnostics-color=always -Wall -Wextra -Wcast-align -Wconversion -Wfloat-equal -Wformat=2 -Wnull-dereference -Wshadow -Wsign-conversion -Wswitch-default -Wswitch-enum -Wundef -Wunreachable-code -Wunused -fsanitize=thread
 # Warning suppressions
 CFLAGS += -Wno-sign-compare
 
@@ -71,6 +72,8 @@ fs/tfs_server: fs/operations.o fs/state.o
 tests/lib_destroy_after_all_closed_test: fs/operations.o fs/state.o
 tests/client_server_shutdown_test: tests/client_server_shutdown_test.o client/tecnicofs_client_api.o
 tests/client_server_unmount_fail: tests/client_server_unmount_fail.o client/tecnicofs_client_api.o
+tests/lib_destroy_after_all_closed_open: fs/operations.o fs/state.o
+tests/teste2: tests/teste2.o client/tecnicofs_client_api.o
 
 clean:
 	rm -f $(OBJECTS) $(TARGET_EXECS)
