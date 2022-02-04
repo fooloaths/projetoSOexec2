@@ -20,9 +20,13 @@ int main(int argc, char **argv) {
         printf("You must provide the following arguments: 'client_pipe_path "
                "server_pipe_path'\n");
         return 1;
-    }
+    } 
+
+    printf("hello\n");
 
     assert(tfs_mount(argv[1], argv[2]) == 0);
+
+    printf("dead\n");
 
     f = tfs_open(path, TFS_O_CREAT);
     assert(f != -1);

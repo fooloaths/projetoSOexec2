@@ -26,6 +26,7 @@ struct request {
     size_t len;
 };
 
+static FILE *fclis[S];
 static const char *server_pipe_name;
 static int session_ids[S];
 static char client_pipes[S][PIPE_PATH_SIZE];
@@ -49,6 +50,8 @@ int server_init() {
 
     for (size_t i = 0; i < S; i++) {
         session_ids[i] = FREE;
+
+        fclis[i] = NULL;
 
         if (pthread_mutex_init(&client_mutexes[i], NULL) != 0) {
             return -1;
@@ -143,7 +146,7 @@ int send_reply(const void *restrict ptr, FILE *fcli, size_t size) {
 }
 
 int treat_open_request(int id, char *name, int flags) {
-    FILE *fcli;
+    FILE *fcli = fclis[id];
     int operation_result;
 
     // // /* Open client pipe */
@@ -173,7 +176,7 @@ int treat_open_request(int id, char *name, int flags) {
 }
 
 int treat_close_request(int id, int fhandle) {
-    FILE *fcli;
+    FILE *fcli = fclis[id];
     int operation_result = 0;
 
     // // /* Open client pipe */
@@ -202,7 +205,7 @@ int treat_close_request(int id, int fhandle) {
 }
 
 ssize_t treat_write_request(int id, int fhandle, size_t len, char *buff) {
-    FILE *fcli;
+    FILE *fcli = fclis[id];
     ssize_t operation_result = 0;
 
     // // /* Open client pipe */
@@ -231,7 +234,7 @@ ssize_t treat_write_request(int id, int fhandle, size_t len, char *buff) {
 
 ssize_t treat_request_read(int id, int fhandle, size_t len) {
     char *buff = (char *) malloc(sizeof(char) * len);
-    FILE *fcli;
+    FILE *fcli = fclis[id];
     ssize_t operation_result = 0;
     size_t size_written = 0;
 
@@ -327,6 +330,8 @@ int treat_request_shutdown(int id) {
 int tfs_mount(char *path) {
     int id;
     FILE *fcli;
+
+    printf("hello mount\n");
     if ((fcli = fopen(path, "w")) == NULL) {
         return -1;
     }
@@ -338,6 +343,10 @@ int tfs_mount(char *path) {
         session_ids[id] = TAKEN;
         strcpy(client_pipes[id], path);
     }
+
+    printf("hello mount\n");
+
+    fclis[id] = fcli;
 
     if (send_reply(&id, fcli, sizeof(int)) == -1) {
         if ((fclose(fcli)) != 0) {
@@ -362,7 +371,7 @@ int tfs_mount(char *path) {
 int tfs_unmount(int id) {
     int operation_result = 0;
     int error;
-    FILE *fcli;
+    FILE *fcli = fclis[id];
 
     // // if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
     // //     return -1;
@@ -630,7 +639,6 @@ int main(int argc, char **argv) {
     FILE *fserv;
     size_t r_buffer;
     char buff = '\0';
-
     signal(SIGPIPE, SIG_IGN);
 
     if (argc < 2) {
@@ -647,21 +655,29 @@ int main(int argc, char **argv) {
              * properly deleted at the end of the last session*/
             return -1;
         }
-    }
+    }   
+
+    printf("here\n");
 
     if (server_init() == -1) {
         return -1;
     }
 
+    printf("here init\n");
+
     /* Create server's named pipe */
-    if (mkfifo(pipename, 0640) < 0) {
+    if (mkfifo(pipename, 0777) < 0) {
         return -1;
     }
+
+    printf("here 3\n");
 
         /* Open server's named pipe */
     if ((fserv = fopen(pipename, "r")) == NULL) {
         return -1;
     }
+
+    printf("here 4\n");
 
     server_pipe_name = pipename;
 
