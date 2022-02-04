@@ -41,7 +41,9 @@ int tfs_mount(char *path);
 int tfs_unmount(int id);
 
 int server_init() {
-    tfs_init();
+    if (tfs_init() == -1) {
+        return -1;
+    }
 
     if (pthread_mutex_init(&id_table_mutex, NULL) != 0) {
         return -1;
@@ -436,11 +438,8 @@ int treat_request(char buff, FILE *fserv) {
     message = &(prod_cons_buffer[session_id][0]);
     message->session_id = session_id;
     
-    if (op_code == TFS_OP_CODE_UNMOUNT ) {
-        /*
-         * Por agora não faz nada, deixo só aqui por enquanto para ficar legível o que está a acontecer
-         *
-         */
+    if (op_code == TFS_OP_CODE_UNMOUNT) {
+        /* Do nothing (Unmount only requires the client's id */
     }
     else if (op_code == TFS_OP_CODE_OPEN) {
         if (fread(message->buffer, sizeof(char), FILE_NAME_SIZE, fserv) != FILE_NAME_SIZE) {
@@ -521,10 +520,7 @@ int treat_request(char buff, FILE *fserv) {
 
     }
     else if (op_code == TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED) {
-        /*
-         * Por agora não faz nada, deixo só aqui por enquanto para ficar legível o que está a acontecer
-         *
-         */
+        /* Do nothing. Operation only requires knowing client id */
     }
     else {
         message->op_code = -1;
@@ -608,20 +604,31 @@ void* tfs_server_thread(void* args) {
     
     while (1) {
         if (pthread_mutex_lock(&client_mutexes[id]) != 0) {
-            return NULL;
+            /* Since something went wrong with the lock, we kill this worker
+             * thread and place the corresponding ID as taken, so the main
+             * thread doesn't try to mount new clients with this ID */
+            session_ids[id] = TAKEN;
+            pthread_exit(NULL);
         }
         while (message->op_code == -1) {
             if (pthread_cond_wait(&client_cond_var[id], &client_mutexes[id]) != 0) {
+                session_ids[id] = TAKEN;
                 pthread_exit(NULL);
             }
         }
         if (treat_request_thread(id) == -1) {
             message->op_code = -1;
             tfs_unmount(id);
-            pthread_mutex_unlock(&client_mutexes[id]);
+            if (pthread_mutex_unlock(&client_mutexes[id]) != 0) {
+                session_ids[id] = TAKEN;
+                pthread_exit(NULL);
+            }
         }
         message->op_code = -1;
-        pthread_mutex_unlock(&client_mutexes[id]);
+        if (pthread_mutex_unlock(&client_mutexes[id]) != 0 ) {
+            session_ids[id] = TAKEN;
+            pthread_exit(NULL);
+        }
     }
 }
 
@@ -670,7 +677,7 @@ int main(int argc, char **argv) {
         /* Read requests from pipe */
         r_buffer = fread(&buff, 1, 1, fserv);
         if (r_buffer == 0) {
-            if (fclose(fserv) != 0) {   
+            if (fclose(fserv) != 0) {
                 return -1;
             }
             if ((fserv = fopen(pipename, "r")) == NULL) {
