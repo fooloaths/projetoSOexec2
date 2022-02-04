@@ -8,6 +8,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <errno.h>
+#include <limits.h>
 
 
 static int session_id = -1;
@@ -207,7 +208,14 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
     
     size_t size_written;
     ssize_t operation_result;
+
+    if ((sizeof(char) + sizeof(int) + sizeof(int) + sizeof(size_t) + len) > PIPE_BUF) {
+        /* If trying to write more than is safe for a pipe */
+        len = PIPE_BUF - (sizeof(char) + sizeof(int) + sizeof(int) + sizeof(size_t));
+    }
     char buf[sizeof(char) + sizeof(int) + sizeof(int) + sizeof(size_t) + len];
+
+
 
     if ((fserv = fopen(server_pipe, "w" )) == NULL) {
         return -1;
@@ -245,6 +253,10 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
 
     if ((fserv = fopen(server_pipe, "w" )) == NULL) {
         return -1;
+    }
+
+    if (len > PIPE_BUF) {
+        len = PIPE_BUF;
     }
 
     char opcode = TFS_OP_CODE_READ;
