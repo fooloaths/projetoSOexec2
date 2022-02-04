@@ -146,11 +146,11 @@ int treat_open_request(int id, char *name, int flags) {
     FILE *fcli;
     int operation_result;
 
-    /* Open client pipe */
-    if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
-        tfs_unmount(id);
-        return -1;
-    }
+    // // /* Open client pipe */
+    // // if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
+    // //     tfs_unmount(id);
+    // //     return -1;
+    // // }
 
     operation_result = tfs_open(name, flags);
 
@@ -164,10 +164,10 @@ int treat_open_request(int id, char *name, int flags) {
         return -1;
     }
 
-    if (fclose(fcli) != 0) {
-        tfs_unmount(id);
-        return -1;
-    }
+    // // if (fclose(fcli) != 0) {
+    // //     tfs_unmount(id);
+    // //     return -1;
+    // // }
 
     return 0;
 }
@@ -176,11 +176,11 @@ int treat_close_request(int id, int fhandle) {
     FILE *fcli;
     int operation_result = 0;
 
-    /* Open client pipe */
-    if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
-        tfs_unmount(id);
-        return -1;
-    }
+    // // /* Open client pipe */
+    // // if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
+    // //     tfs_unmount(id);
+    // //     return -1;
+    // // }
 
     operation_result = tfs_close(fhandle);
 
@@ -193,10 +193,10 @@ int treat_close_request(int id, int fhandle) {
         return -1;
     }
 
-    if (fclose(fcli) != 0) {
-        tfs_unmount(id);
-        return -1;
-    }
+    // // if (fclose(fcli) != 0) {
+    // //     tfs_unmount(id);
+    // //     return -1;
+    // // }
 
     return 0;
 }
@@ -205,11 +205,11 @@ ssize_t treat_write_request(int id, int fhandle, size_t len, char *buff) {
     FILE *fcli;
     ssize_t operation_result = 0;
 
-    /* Open client pipe */
-    if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
-        tfs_unmount(id);
-        return -1;
-    }
+    // // /* Open client pipe */
+    // // if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
+    // //     tfs_unmount(id);
+    // //     return -1;
+    // // }
     operation_result = tfs_write(fhandle, buff, len);
         
     if (send_reply(&operation_result, fcli, sizeof(ssize_t)) == -1) {
@@ -221,10 +221,10 @@ ssize_t treat_write_request(int id, int fhandle, size_t len, char *buff) {
         return -1;  
     }
 
-    if (fclose(fcli) != 0) {
-        tfs_unmount(id);
-        return -1;
-    }
+    // // if (fclose(fcli) != 0) {
+    // //     tfs_unmount(id);
+    // //     return -1;
+    // // }
 
     return 0;
 }
@@ -239,12 +239,12 @@ ssize_t treat_request_read(int id, int fhandle, size_t len) {
         return -1;
     }
 
-    /* Open client pipe */
-    if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
-        free(buff);
-        tfs_unmount(id);
-        return -1;
-    }
+    // // /* Open client pipe */
+    // // if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
+    // //     free(buff);
+    // //     tfs_unmount(id);
+    // //     return -1;
+    // // }
 
     operation_result = tfs_read(fhandle, buff, len);
     if (send_reply(&operation_result, fcli, sizeof(ssize_t)) == -1) {
@@ -272,11 +272,11 @@ ssize_t treat_request_read(int id, int fhandle, size_t len) {
     }
 
 
-    if (fclose(fcli) != 0) {
-        free(buff);
-        tfs_unmount(id);
-        return -1;
-    }
+    // // if (fclose(fcli) != 0) {
+    // //     free(buff);
+    // //     tfs_unmount(id);
+    // //     return -1;
+    // // }
 
     free(buff);
     return 0;
@@ -348,11 +348,11 @@ int tfs_mount(char *path) {
         return -1;
     }
 
-    if (fclose(fcli) != 0) {
-        /* Failed to close file */
-        tfs_unmount(id);
-        return -1;
-    }
+    // // if (fclose(fcli) != 0) {
+    // //     /* Failed to close file */
+    // //     tfs_unmount(id);
+    // //     return -1;
+    // // }
 
     
 
@@ -364,9 +364,9 @@ int tfs_unmount(int id) {
     int error;
     FILE *fcli;
 
-    if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
-        return -1;
-    }
+    // // if ((fcli = fopen(client_pipes[id], "w")) == NULL) {
+    // //     return -1;
+    // // }
 
     error = terminate_session(id);
 
