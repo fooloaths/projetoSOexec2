@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <signal.h>
+#include <errno.h>
 
 
 #define S 20
@@ -25,6 +26,7 @@ struct request {
     size_t len;
 };
 
+static const char *server_pipe_name;
 static int session_ids[S];
 static char client_pipes[S][PIPE_PATH_SIZE];
 static pthread_mutex_t id_table_mutex;
@@ -309,6 +311,14 @@ int treat_request_shutdown(int id) {
     if (operation_result == -1) {
         tfs_unmount(id);
         return -1;
+    }
+
+    if (unlink(server_pipe_name) == -1) {
+        if (errno != 2) {
+            /* if errno is 2, than unlink simply failed because the pipe was
+             * properly deleted at the end of the last session*/
+            return -1;
+        }
     }
 
     exit(0);
@@ -632,7 +642,11 @@ int main(int argc, char **argv) {
     printf("Starting TecnicoFS server with pipe called %s\n", pipename);
 
     if (unlink(pipename) == -1) {
-        return -1;
+        if (errno != 2) {
+            /* if errno is 2, than unlink simply failed because the pipe was
+             * properly deleted at the end of the last session*/
+            return -1;
+        }
     }
 
     if (server_init() == -1) {
@@ -648,6 +662,8 @@ int main(int argc, char **argv) {
     if ((fserv = fopen(pipename, "r")) == NULL) {
         return -1;
     }
+
+    server_pipe_name = pipename;
 
     /* Main loop */
     while (1) {

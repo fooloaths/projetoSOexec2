@@ -6,15 +6,8 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <signal.h>
-#include <unistd.h> // Not sure se este é preciso
-
-
-//TODO Pensar nas operações se o cliente já tivesse mounted/unmounted?
-//TODO talvez função para concatenar argumentos e enviar o pedido?
-
-#define MOUNT_OP_CODE (char) 1
-#define PIPE_NAME_SIZE 40
-
+#include <unistd.h>
+#include <errno.h>
 
 
 static int session_id = -1;
@@ -28,7 +21,13 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     size_t size_written = 0;
     char buff[PIPE_PATH_SIZE + 1] = {'\0'};
 
-    unlink(client_pipe_path);
+    if (unlink(client_pipe_path) == -1) {
+        if (errno != 2) {
+            /* if errno is 2, than unlink simply failed because the pipe was
+             * properly deleted at the end of the last session*/
+            return -1;
+        }
+    }
 
     if (mkfifo(client_pipe_path, 0640) < 0) {
         return -1;
@@ -124,7 +123,9 @@ int tfs_unmount() {
     }
 
     /* Remove client's path */
-    unlink(pipe_path);
+    if (unlink(pipe_path) == -1) {
+        return -1;
+    }
 
     return operation_result;
 }
